@@ -23,6 +23,11 @@ var initCmd = &cobra.Command{
 			)
 		`)
 		fmt.Println("Eko initialized.")
+
+		// Check if a .git directory exists
+		if info, err := os.Stat(".git"); err == nil && info.IsDir() {
+			fmt.Println("Tip: A Git repository was detected. Eko runs independently of Git but automatically ignores the .git directory.")
+		}
 	},
 }
 

@@ -6,6 +6,7 @@ import (
 	"eko/internal/db"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -171,5 +172,56 @@ func TestRestoreCommand(t *testing.T) {
 	}
 	if string(content) != "hello version 1" {
 		t.Errorf("expected content to be restored to 'hello version 1', got %q", string(content))
+	}
+}
+
+func TestInitCommand_gitWarning(t *testing.T) {
+	_ = setupTestDir(t)
+	if err := os.Mkdir(".git", 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	initCmd.Run(initCmd, []string{})
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if !strings.Contains(output, "Tip: A Git repository was detected") {
+		t.Errorf("expected output to contain Git tip warning, got: %q", output)
+	}
+}
+
+func TestSaveCommand_customMessage(t *testing.T) {
+	dir := setupTestDir(t)
+	initCmd.Run(initCmd, []string{})
+
+	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set custom save message
+	saveMessage = "custom test description"
+	defer func() { saveMessage = "snapshot" }() // reset to default
+
+	saveCmd.Run(saveCmd, []string{})
+
+	database := db.InitDB()
+	defer database.Close()
+
+	var message string
+	err := database.QueryRow("SELECT message FROM snapshots LIMIT 1").Scan(&message)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if message != "custom test description" {
+		t.Errorf("expected message 'custom test description', got %q", message)
 	}
 }
