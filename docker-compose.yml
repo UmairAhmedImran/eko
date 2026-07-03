@@ -1,12 +1,6 @@
 version: "3.8"
 
 services:
-  eko-ui:
-    image: eko-ui
-    build: ./ui
-    ports:
-      - "3000:80"
-
   eko-cli:
     image: eko-cli
     build: ./

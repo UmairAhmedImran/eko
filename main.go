@@ -1,12 +1,9 @@
 package main
 
 import (
-	"embed"
+	"eko/cmd"
 )
 
-//go:embed all:ui/out
-var assets embed.FS
-
 func main() {
-	run()
+	cmd.Execute()
 }

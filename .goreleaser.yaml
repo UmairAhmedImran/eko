@@ -9,8 +9,6 @@ before:
 builds:
   - env:
       - CGO_ENABLED=1
-    tags:
-      - no_gui
     goos:
       - linux
       - windows
