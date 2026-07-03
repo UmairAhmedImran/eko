@@ -2,7 +2,7 @@
 <!-- Provide a brief description of the changes in this PR -->
 
 ## Related Issues
-<!-- Link to the issue(s) this PR fixes (e.g., Fixes #123) -->
+<!-- Link to the issue(s) this PR fixes (e.g., Fixes #1234) -->
 
 ## Type of Change
 - [ ] Bug fix (non-breaking change which fixes an issue)
