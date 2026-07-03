@@ -8,6 +8,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var saveMessage string
+
 var saveCmd = &cobra.Command{
 	Use:   "save",
 	Short: "Save project snapshot",
@@ -18,6 +20,9 @@ for later retrieval. Each snapshot is assigned a unique ID that can be
 used with the restore command to revert to this state.`,
 	Example: `  # Save a snapshot of the current project state
   eko save
+
+  # Save with a custom message
+  eko save -m "fixed db lock issue"
 
   # Save and immediately view history
   eko save && eko history
@@ -35,7 +40,7 @@ used with the restore command to revert to this state.`,
 		database.Exec(
 			"INSERT INTO snapshots(id, message, path) VALUES (?, ?, ?)",
 			id,
-			"snapshot",
+			saveMessage,
 			path,
 		)
 		fmt.Println("Snapshot saved:", id)
@@ -43,5 +48,6 @@ used with the restore command to revert to this state.`,
 }
 
 func init() {
+	saveCmd.Flags().StringVarP(&saveMessage, "message", "m", "snapshot", "log message describing the snapshot")
 	rootCmd.AddCommand(saveCmd)
 }
