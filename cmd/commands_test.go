@@ -207,9 +207,12 @@ func TestSaveCommand_customMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Set custom save message
-	saveMessage = "custom test description"
-	defer func() { saveMessage = "snapshot" }() // reset to default
+	if err := saveCmd.Flags().Set("message", "custom test description"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = saveCmd.Flags().Set("message", "snapshot")
+	}()
 
 	saveCmd.Run(saveCmd, []string{})
 
