@@ -5,7 +5,10 @@ package snapshot
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -24,6 +27,10 @@ func CreateSnapshot() (string, string, error) {
 	id := generateID()
 	base := ekoDir + "/snapshots/" + id
 	err := util.CopyDir(".", base)
+	if err != nil {
+		return "", "", err
+	}
+	err = captureEnvVars(base)
 	if err != nil {
 		return "", "", err
 	}
@@ -88,5 +95,67 @@ func RestoreSnapshot(path string) error {
 	}
 
 	// Phase 2: copy the snapshot back into the working directory.
-	return util.CopyDir(path, ".")
+	if err := util.CopyDir(path, "."); err != nil {
+		return err
+	}
+
+	// Restore environment variables by writing a shell script.
+	return restoreEnvVars(path)
+}
+
+func captureEnvVars(destDir string) error {
+	env := os.Environ()
+	envMap := make(map[string]string)
+	for _, e := range env {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 {
+			envMap[parts[0]] = parts[1]
+		}
+	}
+
+	data, err := json.MarshalIndent(envMap, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(filepath.Join(destDir, ".eko_env_vars.json"), data, 0600)
+}
+
+func restoreEnvVars(snapDir string) error {
+	var envMap map[string]string
+	data, err := os.ReadFile(filepath.Join(snapDir, ".eko_env_vars.json"))
+	if err != nil {
+		// If the file doesn't exist, it might be an older snapshot. Just skip.
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	if err := json.Unmarshal(data, &envMap); err != nil {
+		return err
+	}
+
+	// Create .eko_env_restore.sh
+	f, err := os.OpenFile(".eko_env_restore.sh", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	// Write header
+	if _, err := f.WriteString("#!/bin/sh\n# Eko Shell Environment Restore Script\n# Run: source .eko_env_restore.sh\n\n"); err != nil {
+		return err
+	}
+
+	for k, v := range envMap {
+		// Escape values for single-quoted strings in shell
+		escapedVal := strings.ReplaceAll(v, "'", "'\\''")
+		line := "export " + k + "='" + escapedVal + "'\n"
+		if _, err := f.WriteString(line); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

@@ -3,6 +3,7 @@ package snapshot
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -246,5 +247,43 @@ func TestRestoreSnapshot_preservesIgnored(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, ign)); os.IsNotExist(err) {
 			t.Errorf("%s directory should be preserved after RestoreSnapshot", ign)
 		}
+	}
+}
+
+// TestRestoreSnapshot_restoresEnvVars verifies that environment variables are captured
+// during CreateSnapshot and successfully restored to a .eko_env_restore.sh script.
+func TestRestoreSnapshot_restoresEnvVars(t *testing.T) {
+	dir := setupProject(t)
+
+	// Set a custom environment variable
+	os.Setenv("EKO_TEST_VAR", "eko-value-123")
+	defer os.Unsetenv("EKO_TEST_VAR")
+
+	// Snapshot the state.
+	_, snapPath, err := CreateSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Restore the state.
+	full := filepath.Join(dir, snapPath)
+	if err := RestoreSnapshot(full); err != nil {
+		t.Fatalf("RestoreSnapshot error: %v", err)
+	}
+
+	// Check if .eko_env_restore.sh was created.
+	restoreScript := filepath.Join(dir, ".eko_env_restore.sh")
+	if _, err := os.Stat(restoreScript); os.IsNotExist(err) {
+		t.Fatal(".eko_env_restore.sh was not created on restore")
+	}
+
+	// Read content and check if it contains the variable.
+	content, err := os.ReadFile(restoreScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(content), "export EKO_TEST_VAR='eko-value-123'") {
+		t.Errorf("expected script to contain EKO_TEST_VAR export, got:\n%s", string(content))
 	}
 }
