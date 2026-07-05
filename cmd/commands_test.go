@@ -3,11 +3,13 @@ package cmd
 import (
 	"bytes"
 	"database/sql"
-	"eko/internal/db"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"eko/internal/db"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -135,6 +137,52 @@ func TestHistoryCommand(t *testing.T) {
 
 	if len(output) == 0 {
 		t.Error("expected history output to contain snapshot entries, got empty string")
+	}
+}
+
+func TestHistoryCommand_jsonOutput(t *testing.T) {
+	dir := setupTestDir(t)
+
+	initCmd.Run(initCmd, []string{})
+	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	saveCmd.Run(saveCmd, []string{})
+
+	if err := historyCmd.Flags().Set("json", "true"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		jsonOutput = false
+		if err := historyCmd.Flags().Set("json", "false"); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	historyCmd.Run(historyCmd, []string{})
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var entries []map[string]string
+	if err := json.Unmarshal(buf.Bytes(), &entries); err != nil {
+		t.Fatalf("expected valid JSON output, got %q: %v", buf.String(), err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 history entry, got %d", len(entries))
+	}
+	if entries[0]["id"] == "" {
+		t.Error("expected JSON entry to include id")
+	}
+	if entries[0]["created_at"] == "" {
+		t.Error("expected JSON entry to include created_at")
 	}
 }
 
