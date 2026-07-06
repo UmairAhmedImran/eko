@@ -31,7 +31,7 @@ brew install eko
 ```
 
 #### 2. Build From Source
-Clone the repository and compile the binary:
+Clone the repository and compile the binary
 ```bash
 git clone https://github.com/kavix/eko.git
 cd eko
