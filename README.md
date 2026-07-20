@@ -3,7 +3,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/kavix/eko)](https://goreportcard.com/report/github.com/kavix/eko)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Eko** is an AI-powered, high-performance snapshot versioning command-line interface (CLI) written in Go. It allows developers to capture, compare, and restore directory states concurrently. Think of it as a lightning-fast "Time Machine" designed for local development.
+**Eko** is an AI-powered, high-performance snapshot versioning command-line interface (CLI) written in Go. It allows developers to capture, compare, and restore directory states concurrently. As a lightning-fast "Time Machine" designed for local development.
 
 ---
 
