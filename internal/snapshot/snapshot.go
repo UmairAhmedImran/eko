@@ -24,9 +24,13 @@ const ekoDir = ".eko"
 // It generates a random 8-hex-char ID, copies the project tree (excluding .eko itself)
 // into .eko/snapshots/<id>/, and returns the snapshot ID and its storage path.
 func CreateSnapshot() (string, string, error) {
-	id := generateID()
+	id, err := generateID()
+	if err != nil {
+		return "", "", err
+	}
+
 	base := ekoDir + "/snapshots/" + id
-	err := util.CopyDir(".", base)
+	err = util.CopyDir(".", base)
 	if err != nil {
 		return "", "", err
 	}
@@ -38,10 +42,14 @@ func CreateSnapshot() (string, string, error) {
 }
 
 // generateID returns a random 8-character hexadecimal string used as a snapshot identifier.
-func generateID() string {
+func generateID() (string, error) {
 	b := make([]byte, 4)
-	rand.Read(b)
-	return hex.EncodeToString(b)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(b), nil
 }
 
 // RestoreSnapshot reverts the working directory to the state captured in path.

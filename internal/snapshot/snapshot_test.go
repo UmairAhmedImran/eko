@@ -35,7 +35,11 @@ func setupProject(t *testing.T) string {
 
 // TestGenerateID_length checks the hex string is 8 characters (4 bytes → 8 hex).
 func TestGenerateID_length(t *testing.T) {
-	id := generateID()
+	id, err := generateID()
+	if err != nil {
+		t.Fatalf("generateID error: %v", err)
+	}
+
 	if len(id) != 8 {
 		t.Errorf("expected 8-char hex id, got %q (len=%d)", id, len(id))
 	}
@@ -43,7 +47,11 @@ func TestGenerateID_length(t *testing.T) {
 
 // TestGenerateID_hex checks the result is valid hex.
 func TestGenerateID_hex(t *testing.T) {
-	id := generateID()
+	id, err := generateID()
+	if err != nil {
+		t.Fatalf("generateID error: %v", err)
+	}
+
 	for _, c := range id {
 		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
 			t.Errorf("non-hex character %q in id %q", c, id)
@@ -53,7 +61,16 @@ func TestGenerateID_hex(t *testing.T) {
 
 // TestGenerateID_unique checks two consecutive calls produce different IDs.
 func TestGenerateID_unique(t *testing.T) {
-	a, b := generateID(), generateID()
+	a, err := generateID()
+	if err != nil {
+		t.Fatalf("generateID error for a: %v", err)
+	}
+
+	b, err := generateID()
+	if err != nil {
+		t.Fatalf("generateID error for b: %v", err)
+	}
+
 	if a == b {
 		t.Errorf("generateID produced the same value twice: %q", a)
 	}
