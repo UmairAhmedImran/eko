@@ -37,6 +37,7 @@ used with the restore command to revert to this state.`,
 			panic(err)
 		}
 		database := db.InitDB()
+		defer database.Close()
 		database.Exec(
 			"INSERT INTO snapshots(id, message, path) VALUES (?, ?, ?)",
 			id,

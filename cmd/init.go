@@ -1,9 +1,9 @@
 package cmd
 
 import (
+	"eko/internal/db"
 	"fmt"
 	"os"
-	"eko/internal/db"
 
 	"github.com/spf13/cobra"
 )
@@ -14,6 +14,7 @@ var initCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		os.MkdirAll(".eko/snapshots", 0755)
 		database := db.InitDB()
+		defer database.Close()
 		database.Exec(`
 			CREATE TABLE IF NOT EXISTS snapshots (
 				id TEXT PRIMARY KEY,

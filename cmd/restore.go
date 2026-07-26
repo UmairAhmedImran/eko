@@ -16,6 +16,7 @@ var restoreCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		id := args[0]
 		database := db.InitDB()
+		defer database.Close()
 		var path string
 		database.QueryRow("SELECT path FROM snapshots WHERE id=?", id).Scan(&path)
 		err := snapshot.RestoreSnapshot(path)
