@@ -31,10 +31,10 @@ used with the restore command to revert to this state.`,
   eko history
   eko restore <snapshot-id>`,
 	PreRunE: requireInitialized,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		id, path, err := snapshot.CreateSnapshot()
 		if err != nil {
-			panic(err)
+			return err
 		}
 		database := db.InitDB()
 		database.Exec(
@@ -44,6 +44,8 @@ used with the restore command to revert to this state.`,
 			path,
 		)
 		fmt.Println("Snapshot saved:", id)
+
+		return nil
 	},
 }
 

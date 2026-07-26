@@ -20,13 +20,13 @@ var historyCmd = &cobra.Command{
 	Use:     "history",
 	Short:   "Show snapshots",
 	PreRunE: requireInitialized,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		database := db.InitDB()
 		defer database.Close()
 
 		rows, err := database.Query("SELECT id, created_at FROM snapshots")
 		if err != nil {
-			panic(err)
+			return err
 		}
 		defer rows.Close()
 
@@ -34,7 +34,7 @@ var historyCmd = &cobra.Command{
 		for rows.Next() {
 			var entry historyEntry
 			if err := rows.Scan(&entry.ID, &entry.CreatedAt); err != nil {
-				panic(err)
+				return err
 			}
 			entries = append(entries, entry)
 		}
@@ -42,15 +42,17 @@ var historyCmd = &cobra.Command{
 		if jsonOutput {
 			data, err := json.Marshal(entries)
 			if err != nil {
-				panic(err)
+				return err
 			}
 			fmt.Println(string(data))
-			return
+			return nil
 		}
 
 		for _, entry := range entries {
 			fmt.Println(entry.ID, entry.CreatedAt)
 		}
+
+		return nil
 	},
 }
 
