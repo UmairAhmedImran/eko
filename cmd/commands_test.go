@@ -74,7 +74,9 @@ func TestSaveCommand(t *testing.T) {
 	}
 
 	// Run the save command
-	_ = saveCmd.RunE(saveCmd, []string{})
+	if err := saveCmd.RunE(saveCmd, []string{}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Verify database record
 	database := db.InitDB()
