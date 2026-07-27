@@ -74,7 +74,9 @@ func TestSaveCommand(t *testing.T) {
 	}
 
 	// Run the save command
-	saveCmd.Run(saveCmd, []string{})
+	if err := saveCmd.RunE(saveCmd, []string{}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Verify database record
 	database := db.InitDB()
@@ -119,14 +121,14 @@ func TestHistoryCommand(t *testing.T) {
 	}
 
 	// Save snapshot
-	saveCmd.Run(saveCmd, []string{})
+	_ = saveCmd.RunE(saveCmd, []string{})
 
 	// Setup capture of stdout
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	historyCmd.Run(historyCmd, []string{})
+	_ = historyCmd.RunE(historyCmd, []string{})
 
 	w.Close()
 	os.Stdout = oldStdout
@@ -147,7 +149,7 @@ func TestHistoryCommand_jsonOutput(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("hello"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	saveCmd.Run(saveCmd, []string{})
+	_ = saveCmd.RunE(saveCmd, []string{})
 
 	if err := historyCmd.Flags().Set("json", "true"); err != nil {
 		t.Fatal(err)
@@ -163,7 +165,7 @@ func TestHistoryCommand_jsonOutput(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	historyCmd.Run(historyCmd, []string{})
+	_ = historyCmd.RunE(historyCmd, []string{})
 
 	w.Close()
 	os.Stdout = oldStdout
@@ -194,7 +196,7 @@ func TestRestoreCommand(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("hello version 1"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	saveCmd.Run(saveCmd, []string{})
+	_ = saveCmd.RunE(saveCmd, []string{})
 
 	// Get snapshot ID
 	database := db.InitDB()
@@ -211,7 +213,7 @@ func TestRestoreCommand(t *testing.T) {
 	}
 
 	// Run restore
-	restoreCmd.Run(restoreCmd, []string{id})
+	_ = restoreCmd.RunE(restoreCmd, []string{id})
 
 	// Check file restored to version 1
 	content, err := os.ReadFile(filepath.Join(dir, "hello.txt"))
@@ -259,7 +261,7 @@ func TestSaveCommand_customMessage(t *testing.T) {
 	saveMessage = "custom test description"
 	defer func() { saveMessage = "snapshot" }() // reset to default
 
-	saveCmd.Run(saveCmd, []string{})
+	_ = saveCmd.RunE(saveCmd, []string{})
 
 	database := db.InitDB()
 	defer database.Close()
