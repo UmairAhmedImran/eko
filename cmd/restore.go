@@ -16,8 +16,13 @@ var restoreCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		id := args[0]
 		database := db.InitDB()
+		defer database.Close()
+
 		var path string
-		database.QueryRow("SELECT path FROM snapshots WHERE id=?", id).Scan(&path)
+		if err := database.QueryRow("SELECT path FROM snapshots WHERE id=?", id).Scan(&path); err != nil {
+			return fmt.Errorf("snapshot not found: %w", err)
+		}
+
 		err := snapshot.RestoreSnapshot(path)
 		if err != nil {
 			return err

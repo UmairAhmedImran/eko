@@ -37,12 +37,16 @@ used with the restore command to revert to this state.`,
 			return err
 		}
 		database := db.InitDB()
-		database.Exec(
+		defer database.Close()
+
+		if _, err := database.Exec(
 			"INSERT INTO snapshots(id, message, path) VALUES (?, ?, ?)",
 			id,
 			saveMessage,
 			path,
-		)
+		); err != nil {
+			return fmt.Errorf("failed to save snapshot to db: %w", err)
+		}
 		fmt.Println("Snapshot saved:", id)
 
 		return nil
