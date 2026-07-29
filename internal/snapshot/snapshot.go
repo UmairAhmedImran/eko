@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"unsafe"
 
 	"eko/internal/util"
 )
@@ -79,10 +78,11 @@ func RestoreSnapshot(path string) error {
 	}
 
 	// Phase 1: delete concurrently; capture the first error via atomic pointer swap.
-	// Using unsafe.Pointer lets us do a lock-free compare-and-swap on an *error value.
+	// atomic.Pointer[error] gives the same lock-free compare-and-swap as a raw
+	// unsafe.Pointer, but is type-safe and needs no unsafe import.
 	var (
 		wg       sync.WaitGroup
-		firstErr unsafe.Pointer // *error; nil means no error has been stored yet
+		firstErr atomic.Pointer[error] // nil means no error has been stored yet
 	)
 	for _, name := range toRemove {
 		wg.Add(1)
@@ -90,16 +90,15 @@ func RestoreSnapshot(path string) error {
 			defer wg.Done()
 			if rmErr := os.RemoveAll(n); rmErr != nil {
 				// Only record the very first removal error encountered.
-				errVal := rmErr
-				atomic.CompareAndSwapPointer(&firstErr, nil, unsafe.Pointer(&errVal))
+				firstErr.CompareAndSwap(nil, &rmErr)
 			}
 		}(name)
 	}
 	wg.Wait()
 
 	// If any removal failed, return that error before attempting to copy.
-	if firstErr != nil {
-		return *(*error)(firstErr)
+	if err := firstErr.Load(); err != nil {
+		return *err
 	}
 
 	// Phase 2: copy the snapshot back into the working directory.

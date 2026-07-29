@@ -55,10 +55,12 @@ Located in `internal/util/fs.go`, directory copying uses a worker pool model:
 ### B. Parallel Deletion (Lock-Free CAS)
 Located in `internal/snapshot/snapshot.go`, when restoring a snapshot, existing workspace files are deleted concurrently:
 1. **Parallel Delete**: Eko spawns a goroutine for each top-level entry in the directory (excluding ignored files like `.eko` and `.git`).
-2. **Compare-And-Swap (CAS)**: To record the first error thread-safely without mutex locks, it utilizes atomic CAS operations on an `unsafe.Pointer`:
+2. **Compare-And-Swap (CAS)**: To record the first error thread-safely without mutex locks, it utilizes atomic CAS operations on a typed `atomic.Pointer[error]`:
    ```go
-   atomic.CompareAndSwapPointer(&firstErr, nil, unsafe.Pointer(&errVal))
+   var firstErr atomic.Pointer[error]
+   firstErr.CompareAndSwap(nil, &rmErr)
    ```
+   The CAS only succeeds while the pointer is still `nil`, so the *first* goroutine to fail wins and later errors are discarded. After `wg.Wait()`, `firstErr.Load()` returns that error (or `nil`), and a non-nil result short-circuits the restore before the copy phase runs.
 
 ---
 

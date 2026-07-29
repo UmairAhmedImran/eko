@@ -304,3 +304,46 @@ func TestRestoreSnapshot_restoresEnvVars(t *testing.T) {
 		t.Errorf("expected script to contain EKO_TEST_VAR export, got:\n%s", string(content))
 	}
 }
+
+// TestRestoreSnapshot_returnsRemovalError verifies the parallel-deletion error
+// path: when a top-level entry cannot be removed, RestoreSnapshot reports that
+// error and returns *before* copying the snapshot back, so the working tree is
+// not left in a half-restored state.
+func TestRestoreSnapshot_returnsRemovalError(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: directory permissions do not block removal")
+	}
+
+	dir := setupProject(t)
+
+	_, snapPath, err := CreateSnapshot()
+	if err != nil {
+		t.Fatalf("CreateSnapshot error: %v", err)
+	}
+	full := filepath.Join(dir, snapPath)
+
+	// A directory whose child cannot be unlinked because the parent is not
+	// writable: os.RemoveAll on it fails with a permission error.
+	blocked := filepath.Join(dir, "blocked")
+	if err := os.Mkdir(blocked, 0755); err != nil {
+		t.Fatalf("mkdir blocked: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(blocked, "child.txt"), []byte("x"), 0644); err != nil {
+		t.Fatalf("write child: %v", err)
+	}
+	if err := os.Chmod(blocked, 0500); err != nil {
+		t.Fatalf("chmod blocked: %v", err)
+	}
+	// Restore write permission so t.TempDir cleanup can remove the tree.
+	t.Cleanup(func() { os.Chmod(blocked, 0700) })
+
+	if err := RestoreSnapshot(full); err == nil {
+		t.Fatal("RestoreSnapshot should have returned the removal error, got nil")
+	}
+
+	// Phase 2 must not have run: README.md was removed by phase 1 and, because
+	// the error short-circuits the copy, it should not have been restored.
+	if _, err := os.Stat(filepath.Join(dir, "README.md")); !os.IsNotExist(err) {
+		t.Error("snapshot was copied back despite a removal error; expected early return")
+	}
+}
