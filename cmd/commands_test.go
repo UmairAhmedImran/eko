@@ -33,7 +33,7 @@ func TestInitCommand(t *testing.T) {
 	dir := setupTestDir(t)
 
 	// Run the init command
-	initCmd.Run(initCmd, []string{})
+	_ = initCmd.RunE(initCmd, []string{})
 
 	// Check that .eko/snapshots was created
 	snapDir := filepath.Join(dir, ".eko", "snapshots")
@@ -65,7 +65,7 @@ func TestSaveCommand(t *testing.T) {
 	dir := setupTestDir(t)
 
 	// First initialize the project
-	initCmd.Run(initCmd, []string{})
+	_ = initCmd.RunE(initCmd, []string{})
 
 	// Create a dummy file to snapshot
 	testFile := filepath.Join(dir, "hello.txt")
@@ -115,7 +115,7 @@ func TestHistoryCommand(t *testing.T) {
 	dir := setupTestDir(t)
 
 	// Initialize and create dummy file
-	initCmd.Run(initCmd, []string{})
+	_ = initCmd.RunE(initCmd, []string{})
 	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("hello"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestHistoryCommand(t *testing.T) {
 func TestHistoryCommand_jsonOutput(t *testing.T) {
 	dir := setupTestDir(t)
 
-	initCmd.Run(initCmd, []string{})
+	_ = initCmd.RunE(initCmd, []string{})
 	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("hello"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestRestoreCommand(t *testing.T) {
 	dir := setupTestDir(t)
 
 	// Initialize and save initial snapshot with hello.txt
-	initCmd.Run(initCmd, []string{})
+	_ = initCmd.RunE(initCmd, []string{})
 	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("hello version 1"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestInitCommand_gitWarning(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	initCmd.Run(initCmd, []string{})
+	_ = initCmd.RunE(initCmd, []string{})
 
 	w.Close()
 	os.Stdout = oldStdout
@@ -251,7 +251,7 @@ func TestInitCommand_gitWarning(t *testing.T) {
 
 func TestSaveCommand_customMessage(t *testing.T) {
 	dir := setupTestDir(t)
-	initCmd.Run(initCmd, []string{})
+	_ = initCmd.RunE(initCmd, []string{})
 
 	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("hello"), 0644); err != nil {
 		t.Fatal(err)

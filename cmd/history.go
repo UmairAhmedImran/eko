@@ -39,6 +39,10 @@ var historyCmd = &cobra.Command{
 			entries = append(entries, entry)
 		}
 
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("error iterating history rows: %w", err)
+		}
+
 		if jsonOutput {
 			data, err := json.Marshal(entries)
 			if err != nil {
