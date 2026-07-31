@@ -12,6 +12,7 @@ import (
 type copyTask struct {
 	src string
 	dst string
+	mode os.FileMode
 }
 
 // ShouldIgnore reports whether a file or directory should be ignored by Eko.
@@ -59,7 +60,7 @@ func CopyDir(src, dst string) error {
 		go func() {
 			defer wg.Done()
 			for t := range tasks {
-				if err := copyFile(t.src, t.dst); err != nil {
+				if err := copyFile(t.src, t.dst, t.mode); err != nil {
 					errs <- err
 					return
 				}
@@ -93,6 +94,13 @@ func CopyDir(src, dst string) error {
 			// Create directories synchronously so workers never race on mkdir.
 			return os.MkdirAll(target, 0755)
 		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			linkTarget, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			return os.Symlink(linkTarget, target)
+		}
 
 		// Non-blocking check: bail early if a worker already reported an error.
 		select {
@@ -102,7 +110,7 @@ func CopyDir(src, dst string) error {
 		default:
 		}
 
-		tasks <- copyTask{src: path, dst: target}
+		tasks <- copyTask{src: path, dst: target, mode: info.Mode()}
 		return nil
 	})
 
@@ -117,19 +125,23 @@ func CopyDir(src, dst string) error {
 	return <-errs // nil if the channel is empty
 }
 
-func copyFile(src, dst string) error {
+func copyFile(src, dst string, mode os.FileMode) error {
 	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer in.Close()
 
-	out, err := os.Create(dst)
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode.Perm())
 	if err != nil {
 		return err
 	}
-	defer out.Close()
-
-	_, err = io.Copy(out, in)
-	return err
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	if err := out.Close(); err != nil {
+		return err
+	}
+	return os.Chmod(dst, mode.Perm())
 }
