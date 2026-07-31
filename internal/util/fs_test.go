@@ -3,6 +3,7 @@ package util
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -115,5 +116,66 @@ func TestCopyDir_preservesContent(t *testing.T) {
 	got, _ := os.ReadFile(filepath.Join(dst, "bin"))
 	if string(got) != string(payload) {
 		t.Errorf("binary content mismatch after copy")
+	}
+}
+
+func TestCopyDir_preservesFileMode(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+
+	srcFile := filepath.Join(src, "script.sh")
+	if err := os.WriteFile(srcFile, []byte("#!/bin/sh\necho hi\n"), 0751); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(srcFile, 0751); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := CopyDir(src, dst); err != nil {
+		t.Fatalf("CopyDir returned error: %v", err)
+	}
+
+	info, err := os.Stat(filepath.Join(dst, "script.sh"))
+	if err != nil {
+		t.Fatalf("copied file not found: %v", err)
+	}
+	if got, want := info.Mode().Perm(), os.FileMode(0751); got != want {
+		t.Fatalf("copied mode mismatch: got %o, want %o", got, want)
+	}
+}
+
+func TestCopyDir_preservesSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink semantics differ on Windows")
+	}
+
+	src := t.TempDir()
+	dst := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(src, "target.txt"), []byte("target"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("target.txt", filepath.Join(src, "link.txt")); err != nil {
+		t.Skipf("unable to create symlink in test env: %v", err)
+	}
+
+	if err := CopyDir(src, dst); err != nil {
+		t.Fatalf("CopyDir returned error: %v", err)
+	}
+
+	linkPath := filepath.Join(dst, "link.txt")
+	info, err := os.Lstat(linkPath)
+	if err != nil {
+		t.Fatalf("copied link not found: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("copied entry is not a symlink: mode=%v", info.Mode())
+	}
+	linkTarget, err := os.Readlink(linkPath)
+	if err != nil {
+		t.Fatalf("failed to read copied symlink: %v", err)
+	}
+	if linkTarget != "target.txt" {
+		t.Fatalf("copied symlink target mismatch: got %q, want %q", linkTarget, "target.txt")
 	}
 }
