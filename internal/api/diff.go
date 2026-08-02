@@ -1,6 +1,7 @@
 package api
 
 import (
+	"eko/internal/util"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -29,8 +30,17 @@ func BuildDiff(fromDir, toDir string) ([]DiffFile, error) {
 
 	walkDir := func(root string) error {
 		return filepath.Walk(root, func(path string, info fs.FileInfo, err error) error {
-			if err != nil || info.IsDir() {
+			if err != nil {
 				return err
+			}
+			if util.ShouldIgnore(info.Name(), info.IsDir()) {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if info.IsDir() {
+				return nil
 			}
 			rel, _ := filepath.Rel(root, path)
 			seen[rel] = true
