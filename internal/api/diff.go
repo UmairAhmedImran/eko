@@ -55,8 +55,13 @@ func BuildDiff(fromDir, toDir string) ([]DiffFile, error) {
 	}
 
 	for rel := range seen {
-		orig := readFileSafe(filepath.Join(fromDir, rel))
-		mod := readFileSafe(filepath.Join(toDir, rel))
+		var orig, mod string
+		if fromDir != "" {
+			orig = readFileSafe(filepath.Join(fromDir, rel))
+		}
+		if toDir != "" {
+			mod = readFileSafe(filepath.Join(toDir, rel))
+		}
 		if orig == mod {
 			continue
 		}
