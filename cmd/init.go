@@ -15,15 +15,8 @@ var initCmd = &cobra.Command{
 		os.MkdirAll(".eko/snapshots", 0755)
 		database := db.InitDB()
 		defer database.Close()
-		if _, err := database.Exec(`
-			CREATE TABLE IF NOT EXISTS snapshots (
-				id TEXT PRIMARY KEY,
-				message TEXT,
-				path TEXT,
-				created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-			)
-		`); err != nil {
-			return fmt.Errorf("error creating the table: %w", err)
+		if err := db.MigrateDB(database); err != nil {
+			return fmt.Errorf("error initializing database schema: %w", err)
 		}
 		fmt.Println("Eko initialized.")
 

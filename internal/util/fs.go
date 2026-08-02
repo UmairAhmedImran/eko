@@ -28,7 +28,7 @@ func ShouldIgnore(name string, isDir bool) bool {
 				return true
 			}
 		}
-		if name == "eko" || name == "eko.exe" || name == ".eko_env_restore.sh" {
+		if name == "eko" || name == "eko.exe" || name == ".eko_env_restore.sh" || name == ".eko_env_vars.json" {
 			return true
 		}
 	}
