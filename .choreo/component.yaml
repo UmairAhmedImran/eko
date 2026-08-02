@@ -1,0 +1,10 @@
+schemaVersion: 1.2
+endpoints:
+  - name: eko-docs-endpoint
+    displayName: Eko Documentation Web App
+    service:
+      basePath: /
+      port: 8080
+      type: REST
+      networkVisibilities:
+        - Public
