@@ -11,7 +11,7 @@ const config: Config = {
     v4: true,
   },
 
-  url: 'https://eko.choreoapps.dev',
+  url: 'https://kavix.github.io',
   baseUrl: '/',
 
   organizationName: 'kavix',
@@ -92,7 +92,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} Eko Project. Built with Docusaurus and deployed on WSO2 Choreo.`,
+      copyright: `Copyright © ${new Date().getFullYear()} Eko Project. Built with Docusaurus.`,
     },
     prism: {
       theme: prismThemes.github,
