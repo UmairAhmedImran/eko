@@ -5,52 +5,50 @@ import styles from './styles.module.css';
 
 type FeatureItem = {
   title: string;
-  Svg: React.ComponentType<React.ComponentProps<'svg'>>;
+  icon: string;
   description: ReactNode;
 };
 
 const FeatureList: FeatureItem[] = [
   {
-    title: 'Easy to Use',
-    Svg: require('@site/static/img/undraw_docusaurus_mountain.svg').default,
+    title: 'Concurrent Worker Pool Engine',
+    icon: '⚡',
     description: (
       <>
-        Docusaurus was designed from the ground up to be easily installed and
-        used to get your website up and running quickly.
+        Capture directory states instantly using Go's worker-pool concurrency model.
+        Perform atomic restores with lock-free compare-and-swap (CAS) safety guards.
       </>
     ),
   },
   {
-    title: 'Focus on What Matters',
-    Svg: require('@site/static/img/undraw_docusaurus_tree.svg').default,
+    title: 'AI-Powered Change Summaries',
+    icon: '🤖',
     description: (
       <>
-        Docusaurus lets you focus on your docs, and we&apos;ll do the chores. Go
-        ahead and move your docs into the <code>docs</code> directory.
+        Automatically generate concise, human-readable change summaries using Gemini, OpenAI,
+        or local heuristic engines directly when saving or inspecting snapshots.
       </>
     ),
   },
   {
-    title: 'Powered by React',
-    Svg: require('@site/static/img/undraw_docusaurus_react.svg').default,
+    title: 'Self-Contained SQLite Metadata',
+    icon: '🔒',
     description: (
       <>
-        Extend or customize your website layout by reusing React. Docusaurus can
-        be extended while reusing the same header and footer.
+        All snapshot metadata, file trees, and AI logs are stored locally in a self-contained
+        SQLite database inside <code>.eko/</code>. Runs independently of Git.
       </>
     ),
   },
 ];
 
-function Feature({title, Svg, description}: FeatureItem) {
+function Feature({title, icon, description}: FeatureItem) {
   return (
-    <div className={clsx('col col--4')}>
-      <div className="text--center">
-        <Svg className={styles.featureSvg} role="img" />
-      </div>
-      <div className="text--center padding-horiz--md">
-        <Heading as="h3">{title}</Heading>
-        <p>{description}</p>
+    <div className={clsx('col col--4', 'margin-bottom--lg')}>
+      <div className="featureCard">
+        <div className="featureIcon">{icon}</div>
+        <Heading as="h3" className="margin-bottom--sm">{title}</Heading>
+        <p className="margin-bottom--none" style={{color: 'var(--ifm-color-emphasis-700)', lineHeight: '1.6'}}>{description}</p>
       </div>
     </div>
   );
