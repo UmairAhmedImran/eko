@@ -6,7 +6,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copy dependency manifests
-COPY package.json package-lock.json ./
+COPY package*.json ./
 
 # Install dependencies cleanly
 RUN npm ci
@@ -36,12 +36,12 @@ COPY nginx.conf /etc/nginx/nginx.conf
 COPY --from=builder /app/build /usr/share/nginx/html
 
 # Grant required permissions to non-root user for temp directories & static files
-RUN chown -R choreo:choreo /usr/share/nginx/html && \
+RUN mkdir -p /tmp/client_temp /tmp/proxy_temp_path /tmp/fastcgi_temp /tmp/uwsgi_temp /tmp/scgi_temp && \
+    chown -R choreo:choreo /usr/share/nginx/html && \
     chown -R choreo:choreo /var/cache/nginx && \
     chown -R choreo:choreo /var/log/nginx && \
     chown -R choreo:choreo /etc/nginx && \
-    touch /tmp/nginx.pid && \
-    chown choreo:choreo /tmp/nginx.pid
+    chown -R choreo:choreo /tmp
 
 # Switch to non-root user for security compliance
 USER 10014
