@@ -1,0 +1,8 @@
+node_modules
+build
+.docusaurus
+npm-debug.log
+Dockerfile
+.git
+.gitignore
+.choreo
