@@ -9,6 +9,7 @@
 
 ## Features
 
+- **AI-Powered Change Summaries:** Automatically analyze code diffs and generate intelligent, human-readable snapshot change summaries using Gemini, OpenAI, or local heuristic engines.
 - **Concurrent Snapshots:** Instantly capture filesystem states using a worker-pool concurrency model.
 - **Atomic Restores:** Revert workspaces cleanly with safety guards and thread-safe error recovery.
 - **Metadata Management:** Structured storage of snapshots and logs in a local, self-contained SQLite database.
@@ -52,15 +53,40 @@ eko init
 Capture the current filesystem state (automatically ignores files matching patterns like `.git`, `node_modules`, etc.):
 ```bash
 eko save
+
+# Auto-generate an AI summary of changes when saving:
+eko save --ai
 ```
 
-### 3. View Snapshot Log
-List all recorded snapshots along with their unique identifiers and creation timestamps:
+### 3. Generate AI Change Summaries
+Summarize changes introduced in snapshots using AI:
+```bash
+# Summarize changes in the latest snapshot
+eko summary
+
+# Summarize changes in a specific snapshot
+eko summary <snapshot-id>
+
+# Summarize changes between two snapshots
+eko summary <snapshot-id1> <snapshot-id2>
+
+# Output in JSON format with a specific AI provider (auto, heuristic, openai, gemini)
+eko summary --json --provider gemini
+```
+
+#### AI Configuration & API Keys
+Configure your preferred AI provider using environment variables:
+- **Google Gemini**: Set `GEMINI_API_KEY`
+- **OpenAI / Custom LLMs**: Set `OPENAI_API_KEY` or `EKO_AI_API_KEY` (Optional endpoint override: `EKO_AI_ENDPOINT`, model override: `EKO_AI_MODEL`)
+- **Offline / Local Fallback**: Automatic local heuristic summary generator when no API keys are provided.
+
+### 4. View Snapshot Log
+List all recorded snapshots along with their unique identifiers, creation timestamps, and AI summaries:
 ```bash
 eko history
 ```
 
-### 4. Restore a State
+### 5. Restore a State
 Revert the current directory to the exact state of any past snapshot:
 ```bash
 eko restore <snapshot-id>

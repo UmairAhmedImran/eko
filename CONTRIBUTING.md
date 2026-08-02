@@ -13,15 +13,21 @@ Eko is written entirely in Go as a structured command-line application using the
 ```
 eko/
 ├── cmd/              # CLI Command Layer (Cobra CLI subcommands)
-│   ├── commands_test.go   # Integration tests for all CLI commands
+│   ├── commands_test.go   # Integration tests for CLI commands
 │   ├── history.go    # "eko history" command
 │   ├── init.go       # "eko init" command
 │   ├── project.go     # Initialization and check guards
 │   ├── project_test.go# Initializer guards unit tests
 │   ├── restore.go     # "eko restore" command
 │   ├── root.go        # Cobra Root command
-│   └── save.go        # "eko save" command
+│   ├── save.go        # "eko save" command
+│   ├── summary.go     # "eko summary" command
+│   └── summary_test.go# Integration tests for AI summaries
 ├── internal/
+│   ├── ai/           # AI Summary & Provider Engine
+│   │   ├── provider.go    # Heuristic, OpenAI, Gemini LLM providers
+│   │   ├── summary.go     # Diff analysis and summary generator
+│   │   └── summary_test.go# AI summary unit tests
 │   ├── api/          # Directory Comparison & Diffing
 │   │   ├── diff.go        # Walks snapshots and builds before/after file pairs
 │   │   └── diff_test.go   # Tests for diff calculations

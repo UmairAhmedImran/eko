@@ -69,18 +69,56 @@ eko save
 ```
 *Output:* `Snapshot saved: <id>` (where `<id>` is a unique 8-character hexadecimal identifier).
 
-### Step 3: View Snapshot History
-List all saved snapshots with their creation timestamps:
+You can also auto-generate an AI change summary when saving:
 ```bash
-eko history
-```
-*Example Output:*
-```text
-3b7f2a1e 2026-06-15 13:28:45
-8c9d1a2f 2026-06-15 13:30:10
+eko save --ai
 ```
 
-### Step 4: Restore a Previous State
+### Step 3: Generate AI Change Summaries
+Inspect AI-generated summaries of changes between snapshots:
+```bash
+# Summarize changes in the latest snapshot vs predecessor
+eko summary
+
+# Summarize changes in a specific snapshot
+eko summary 3b7f2a1e
+
+# Summarize changes between two specific snapshots
+eko summary 3b7f2a1e 8c9d1a2f
+
+# Output summary as formatted JSON
+eko summary --json
+
+# Force a specific provider (auto, heuristic, openai, gemini) and save result to DB
+eko summary 3b7f2a1e --provider gemini --save
+```
+
+### Step 4: AI Provider Configuration
+Eko supports multiple AI summary engines:
+- **Auto (default)**: Automatically uses Gemini or OpenAI if credentials are found, otherwise falls back to local heuristic mode.
+- **Heuristic / Offline (`-p heuristic`)**: Fast, structured local rule-based analysis (no API key or internet required).
+- **OpenAI (`-p openai`)**: Connects to OpenAI API or custom local LLMs (vLLM / Ollama).
+- **Gemini (`-p gemini`)**: Connects to Google Gemini API.
+
+#### Environment Variables:
+- `GEMINI_API_KEY`: API key for Google Gemini provider.
+- `OPENAI_API_KEY` / `EKO_AI_API_KEY`: API key for OpenAI provider.
+- `EKO_AI_ENDPOINT`: Custom base URL for OpenAI-compatible LLMs (default: `https://api.openai.com/v1`).
+- `EKO_AI_MODEL`: Custom LLM model (default: `gpt-4o-mini` for OpenAI, `gemini-1.5-flash` for Gemini).
+
+### Step 5: View Snapshot History
+List all saved snapshots with their creation timestamps and summaries:
+```bash
+eko history
+
+# Show verbose history with detailed AI summaries
+eko history --verbose
+
+# Output history list in JSON format
+eko history --json
+```
+
+### Step 6: Restore a Previous State
 Revert all files in your directory concurrently to the exact state captured in a given snapshot:
 ```bash
 eko restore <snapshot-id>
