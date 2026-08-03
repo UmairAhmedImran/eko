@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/eko-banner.png" alt="Eko Logo" width="550" />
+</p>
+
 # Eko User Guide ✦
 
 Eko is an AI snapshot versioning tool designed to capture, inspect, diff, and restore directory states. It can be run either as a lightweight command-line interface (CLI) or as a rich native desktop application.
