@@ -12,7 +12,7 @@ type FeatureItem = {
 const FeatureList: FeatureItem[] = [
   {
     title: 'Concurrent Worker Pool Engine',
-    icon: '⚡',
+    icon: '',
     description: (
       <>
         Capture directory states instantly using Go's worker-pool concurrency model.
@@ -22,7 +22,7 @@ const FeatureList: FeatureItem[] = [
   },
   {
     title: 'AI-Powered Change Summaries',
-    icon: '🤖',
+    icon: '',
     description: (
       <>
         Automatically generate concise, human-readable change summaries using Gemini, OpenAI,
@@ -32,7 +32,7 @@ const FeatureList: FeatureItem[] = [
   },
   {
     title: 'Self-Contained SQLite Metadata',
-    icon: '🔒',
+    icon: '',
     description: (
       <>
         All snapshot metadata, file trees, and AI logs are stored locally in a self-contained
