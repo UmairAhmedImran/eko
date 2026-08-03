@@ -41,7 +41,7 @@ const config: Config = {
   ],
 
   themeConfig: {
-    image: 'img/docusaurus-social-card.jpg',
+    image: 'img/eko-banner.png',
     colorMode: {
       defaultMode: 'dark',
       respectPrefersColorScheme: true,
@@ -50,7 +50,7 @@ const config: Config = {
       title: 'Eko ✦',
       logo: {
         alt: 'Eko Logo',
-        src: 'img/logo.svg',
+        src: 'img/eko.png',
       },
       items: [
         {
