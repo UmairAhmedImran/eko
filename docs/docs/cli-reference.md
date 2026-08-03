@@ -132,7 +132,7 @@ eko restore 3b7f2a1e
 
 ---
 
-## 🌍 Global Environment Variables
+## Global Environment Variables
 
 | Variable | Default Value | Usage |
 | -------- | ------------- | ----- |
