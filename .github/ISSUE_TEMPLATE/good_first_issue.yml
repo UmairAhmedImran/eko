@@ -1,0 +1,42 @@
+name: 🌟 Good First Issue
+description: Propose or file a beginner-friendly task suitable for new contributors
+title: "[Good First Issue]: "
+labels: ["good first issue", "help wanted"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a beginner-friendly task! Please provide clear goals, expected behavior, and step-by-step guidance.
+  - type: textarea
+    id: goal
+    attributes:
+      label: 🎯 Task Goal
+      description: What feature or fix needs to be implemented?
+      placeholder: Implement an 'eko version' command...
+    validations:
+      required: true
+  - type: textarea
+    id: expected-usage
+    attributes:
+      label: 💡 Expected Usage / Output
+      description: Show example terminal commands or expected behavior.
+      placeholder: $ eko version -> eko version 1.1.0...
+    validations:
+      required: true
+  - type: textarea
+    id: implementation-steps
+    attributes:
+      label: 🛠️ Suggested Implementation Steps
+      description: Step-by-step instructions guiding a new contributor on which files to edit.
+      placeholder: 1. Create cmd/version.go...
+    validations:
+      required: true
+  - type: dropdown
+    id: difficulty
+    attributes:
+      label: 📊 Difficulty Level
+      options:
+        - Easy (First-time Go contributor)
+        - Medium (Basic Go & CLI experience)
+    validations:
+      required: true
