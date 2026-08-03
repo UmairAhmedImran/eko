@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/eko-banner.png" alt="Eko Logo" width="550" />
+</p>
+
 # Contributing to Eko ✦
 
 Thank you for your interest in contributing to Eko! Eko is an AI-powered snapshot versioning CLI designed to help capture and restore project states.
