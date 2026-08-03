@@ -46,6 +46,9 @@ function HomepageHeader() {
   return (
     <header className={clsx('hero hero--primary', styles.heroBanner)}>
       <div className="container">
+        <div style={{marginBottom: '1.5rem'}}>
+          <img src="/img/eko-banner.png" alt="Eko Logo" style={{maxWidth: '460px', width: '90%', height: 'auto', borderRadius: '12px'}} />
+        </div>
         <div style={{
           display: 'inline-block',
           padding: '0.35rem 1rem',
