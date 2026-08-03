@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/eko-banner.png" alt="Eko Logo" width="600" />
+</p>
+
 # Eko ✦
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/kavix/eko)](https://goreportcard.com/report/github.com/kavix/eko)
