@@ -19,6 +19,7 @@
 <p align="center">
   <a href="https://kavix.github.io/eko"><b>🌐 Documentation Website</b></a> •
   <a href="guide.md"><b>📖 User Guide</b></a> •
+  <a href="ARCHITECTURE.md"><b>🏛️ Architecture</b></a> •
   <a href="GOOD_FIRST_ISSUES.md"><b>🌟 Good First Issues</b></a> •
   <a href="CONTRIBUTING.md"><b>🤝 Contributing</b></a>
 </p>

@@ -6,7 +6,8 @@
 
 Thank you for your interest in contributing to Eko! Eko is an AI-powered snapshot versioning CLI designed to help capture and restore project states.
 
-> 🌟 **Looking for your first contribution?** Check out our list of beginner-friendly tasks in [GOOD_FIRST_ISSUES.md](GOOD_FIRST_ISSUES.md)!
+> 🌟 **Looking for your first contribution?** Check out our list of beginner-friendly tasks in [GOOD_FIRST_ISSUES.md](GOOD_FIRST_ISSUES.md)!  
+> 🏛️ **Architecture Deep-Dive**: For detailed system diagrams, cell diagrams, and concurrency flowcharts, view [ARCHITECTURE.md](ARCHITECTURE.md).
 
 This guide provides a comprehensive overview of the architecture, internal modules, database design, concurrency patterns, and conventions to help you get started as a contributor.
 
