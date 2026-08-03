@@ -4,6 +4,10 @@ sidebar_position: 1
 
 # Introduction to Eko ✦
 
+<p align="center">
+  <img src="/img/eko-banner.png" alt="Eko Logo" width="550" />
+</p>
+
 **Eko** is an AI-powered, high-performance snapshot versioning command-line interface (CLI) written in Go.
 
 It allows developers to capture, compare, and restore local directory states concurrently. Think of Eko as a lightning-fast local "Time Machine" for your codebase.
