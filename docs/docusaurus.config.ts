@@ -48,10 +48,10 @@ const config: Config = {
     },
     navbar: {
       title: 'Eko ✦',
-      logo: {
-        alt: 'Eko Logo',
-        src: 'img/eko.png',
-      },
+      // logo: {
+      //   alt: 'Eko Logo',
+      //   src: 'img/eko.png',
+      // },
       items: [
         {
           type: 'docSidebar',
