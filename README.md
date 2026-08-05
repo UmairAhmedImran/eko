@@ -139,20 +139,6 @@ Atomically revert your current directory state to any historical snapshot point:
 eko restore <snapshot-id>
 ```
 
-### 6. Clean Old Snapshots
-Remove old snapshots and free the disk space they use. The newest `--keep` snapshots are kept and every older one is removed:
-```bash
-# Keep the 10 newest snapshots (default)
-eko clean
-
-# Keep only the 5 newest
-eko clean --keep 5
-
-# Preview what would be removed, without removing anything
-eko clean --keep 5 --dry-run
-```
-Every snapshot is validated before anything is deleted, and a single unexpected path aborts the run. A dry run opens the database read-only and changes nothing.
-
 ---
 
 ## 🏗️ Architecture
