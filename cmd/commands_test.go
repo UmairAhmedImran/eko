@@ -353,7 +353,6 @@ func withHistoryFormat(t *testing.T, format string, legacyJSON bool) {
 	})
 }
 
-// captureStdout runs fn with os.Stdout redirected and returns what it printed.
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
 	orig := os.Stdout
@@ -361,9 +360,15 @@ func captureStdout(t *testing.T, fn func()) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		os.Stdout = orig
+		_ = w.Close()
+		_ = r.Close()
+	}()
+
 	os.Stdout = w
 	fn()
-	w.Close()
+	_ = w.Close()
 	os.Stdout = orig
 
 	var buf bytes.Buffer
