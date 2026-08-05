@@ -20,7 +20,6 @@ Eko is written entirely in Go as a structured command-line application using the
 ```
 eko/
 ├── cmd/              # CLI Command Layer (Cobra CLI subcommands)
-│   ├── clean.go      # "eko clean" command
 │   ├── commands_test.go   # Integration tests for CLI commands
 │   ├── history.go    # "eko history" command
 │   ├── init.go       # "eko init" command
