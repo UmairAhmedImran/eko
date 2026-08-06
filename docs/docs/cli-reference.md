@@ -17,6 +17,7 @@ Exhaustive reference guide for all commands, flags, options, and aliases in the 
 | [`eko summary`](#3-eko-summary-alias-eko-summarize) | `summarize` | Generate AI-powered change summary | `-j/--json`, `-p/--provider`, `-s/--save` |
 | [`eko history`](#4-eko-history) | None | List snapshot history | `-j/--json`, `-v/--verbose` |
 | [`eko restore`](#5-eko-restore-snapshot-id) | None | Revert project to a past snapshot state | `<snapshot-id>` |
+| [`eko clean`](#6-eko-clean) | None | Remove old snapshots and free disk space | `--keep`, `--dry-run` |
 
 ---
 
@@ -129,6 +130,36 @@ eko restore 3b7f2a1e
 1. **Parallel Delete Phase**: Removes top-level workspace files concurrently using goroutines and lock-free Compare-And-Swap (CAS) error handling.
 2. **Parallel Copy Phase**: Re-populates workspace files from `.eko/snapshots/<id>/`.
 3. **Environment Restoration**: Generates `.eko_env_restore.sh` to restore captured environment variables.
+
+---
+
+## 6. `eko clean`
+
+Removes old snapshots from `.eko/snapshots` and from the database, freeing the disk space they use. Snapshots are ordered newest first; the newest `--keep` are retained and every older one is removed.
+
+```bash
+# Keep the 10 newest snapshots (default) and remove the rest
+eko clean
+
+# Keep only the 5 newest
+eko clean --keep 5
+
+# Show exactly what would be removed, without removing anything
+eko clean --keep 5 --dry-run
+```
+
+### Flags
+
+| Flag | Short | Type | Default | Description |
+| ---- | ----- | ---- | ------- | ----------- |
+| `--keep` | | Int | `10` | Number of most recent snapshots to keep |
+| `--dry-run` | | Bool | `false` | Show what would be removed without removing anything |
+
+**Safety Details**:
+1. **Validate-Then-Delete**: Every snapshot selected for removal is validated before any of them is deleted. A single unexpected path aborts the run before anything is touched.
+2. **Path Confinement**: A recorded path is only accepted when it resolves, through symlinks, to a direct child of `.eko/snapshots` whose directory name matches the snapshot ID.
+3. **Inert Dry Run**: `--dry-run` opens the database read-only and rejects writes at the connection level, so it cannot change a single byte.
+4. **Progress on Failure**: Removal is not atomic. If a deletion fails partway, the error reports exactly how many snapshots were removed, and the next run continues from there.
 
 ---
 
