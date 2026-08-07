@@ -107,14 +107,26 @@ eko history --verbose
 
 # Programmatic JSON output
 eko history --json
+
+# Markdown table, for pasting into a changelog or a PR description
+eko history --format md
+
+# CSV, for a spreadsheet or a reporting pipeline
+eko history --format csv > history.csv
 ```
 
 ### Flags
 
 | Flag | Short | Type | Default | Description |
 | ---- | ----- | ---- | ------- | ----------- |
-| `--json` | | Bool | `false` | Output history list as JSON array |
+| `--format` | | String | `text` | Output format: `text`, `json`, `md`, or `csv` |
+| `--json` | | Bool | `false` | Output history list as JSON array (shortcut for `--format json`) |
 | `--verbose` | `-v` | Bool | `false` | Show verbose history with detailed AI summaries |
+
+**Format Notes**:
+- `md` renders a table with fixed `ID`, `Created At`, `Message`, `Summary` columns. Embedded newlines are collapsed and pipes escaped so one snapshot stays one row, and the header is written even when there are no snapshots.
+- `csv` uses RFC 4180 quoting, so commas, quotes, and newlines inside a message survive intact. The header is `id,created_at,message,summary`.
+- `--json` and `--format` may be combined only when they agree; `--json --format md` is rejected rather than silently printing JSON.
 
 ---
 

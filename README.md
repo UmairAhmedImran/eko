@@ -131,6 +131,10 @@ eko history
 
 # Verbose history mode:
 eko history --verbose
+
+# Export the log as a Markdown table or as CSV:
+eko history --format md
+eko history --format csv > history.csv
 ```
 
 ### 5. Restore Previous State

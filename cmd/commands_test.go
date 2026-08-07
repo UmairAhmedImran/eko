@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -280,17 +281,11 @@ func TestSaveCommand_customMessage(t *testing.T) {
 	}
 }
 
-// --- clean command helpers ---
-
-// withCleanFlags sets the clean flags for one test and restores the defaults.
-func withCleanFlags(t *testing.T, keep int, dryRun bool) {
-	t.Helper()
-	cleanKeep, cleanDryRun = keep, dryRun
-	t.Cleanup(func() { cleanKeep, cleanDryRun = 10, false })
-}
+// --- history test helpers ---
 
 // newLegacyProject creates .eko/snapshots and a database using the pre-summary
-// schema, so clean is exercised against a database it must not migrate.
+// schema, so history is exercised against a database written before the
+// summary column existed.
 func newLegacyProject(t *testing.T) string {
 	t.Helper()
 	dir := setupTestDir(t)
@@ -327,6 +322,399 @@ func addSnapshotRow(t *testing.T, id, path, createdAt string) {
 	); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// assertNotExist fails when path exists.
+func assertNotExist(t *testing.T, path string) {
+	t.Helper()
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("expected %s not to exist, stat error was %v", path, err)
+	}
+}
+
+// --- eko history --format ------------------------------------------------
+
+// withHistoryFormat sets the history output flags the way cobra would and
+// restores the package defaults, including each flag's Changed state, which
+// resolveHistoryFormat reads to tell an explicit --format from the default.
+func withHistoryFormat(t *testing.T, format string, legacyJSON bool) {
+	t.Helper()
+	if format != "" {
+		if err := historyCmd.Flags().Set("format", format); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if legacyJSON {
+		if err := historyCmd.Flags().Set("json", "true"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() {
+		jsonOutput, verboseOutput, historyFormat = false, false, historyFormatText
+		historyCmd.Flags().Lookup("format").Changed = false
+		historyCmd.Flags().Lookup("json").Changed = false
+	})
+}
+
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	orig := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		os.Stdout = orig
+		_ = w.Close()
+		_ = r.Close()
+	}()
+
+	os.Stdout = w
+	fn()
+	_ = w.Close()
+	os.Stdout = orig
+
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatal(err)
+	}
+	return buf.String()
+}
+
+// newHistoryProject creates a current-schema project with no snapshots.
+func newHistoryProject(t *testing.T) string {
+	t.Helper()
+	dir := setupTestDir(t)
+	if err := initCmd.RunE(initCmd, []string{}); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// addHistoryRow inserts a snapshot row with an explicit message and summary.
+func addHistoryRow(t *testing.T, id, createdAt, message, summary string) {
+	t.Helper()
+	database, err := sql.Open("sqlite3", filepath.Join(".eko", "db.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err := database.Exec(
+		"INSERT INTO snapshots(id, message, path, created_at, summary) VALUES (?, ?, ?, ?, ?)",
+		id, message, ".eko/snapshots/"+id, createdAt, summary,
+	); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestResolveHistoryFormat(t *testing.T) {
+	tests := []struct {
+		name          string
+		format        string
+		formatChanged bool
+		legacyJSON    bool
+		want          string
+		wantErr       string
+	}{
+		{name: "default is text", format: historyFormatText, want: historyFormatText},
+		{name: "explicit text", format: historyFormatText, formatChanged: true, want: historyFormatText},
+		{name: "explicit json", format: historyFormatJSON, formatChanged: true, want: historyFormatJSON},
+		{name: "explicit md", format: historyFormatMD, formatChanged: true, want: historyFormatMD},
+		{name: "explicit csv", format: historyFormatCSV, formatChanged: true, want: historyFormatCSV},
+		{name: "legacy json alone", format: historyFormatText, legacyJSON: true, want: historyFormatJSON},
+		{
+			name: "legacy json agrees with explicit json", format: historyFormatJSON,
+			formatChanged: true, legacyJSON: true, want: historyFormatJSON,
+		},
+		{
+			name: "legacy json conflicts with md", format: historyFormatMD,
+			formatChanged: true, legacyJSON: true, wantErr: "--json conflicts with --format md",
+		},
+		{
+			name: "legacy json conflicts with explicit text", format: historyFormatText,
+			formatChanged: true, legacyJSON: true, wantErr: "--json conflicts with --format text",
+		},
+		{
+			name: "unknown format", format: "yaml", formatChanged: true,
+			wantErr: `unsupported --format "yaml"`,
+		},
+		{
+			// A typo should be reported as a typo even when --json is also set.
+			name: "unknown format outranks the conflict", format: "yaml",
+			formatChanged: true, legacyJSON: true, wantErr: `unsupported --format "yaml"`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := resolveHistoryFormat(tc.format, tc.formatChanged, tc.legacyJSON)
+			if tc.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil (format %q)", tc.wantErr, got)
+				}
+				if !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("expected error containing %q, got %q", tc.wantErr, err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("expected format %q, got %q", tc.want, got)
+			}
+		})
+	}
+}
+
+func TestEscapeMarkdownCell(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{name: "plain text is unchanged", value: "fix the parser", want: "fix the parser"},
+		{name: "pipe is escaped", value: "a | b", want: "a \\| b"},
+		{name: "newline becomes a space", value: "line one\nline two", want: "line one line two"},
+		{name: "crlf becomes one space", value: "line one\r\nline two", want: "line one line two"},
+		{name: "lone carriage return becomes a space", value: "a\rb", want: "a b"},
+		{name: "pipes and newlines together", value: "a|b\nc|d", want: "a\\|b c\\|d"},
+		{name: "empty stays empty", value: "", want: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := escapeMarkdownCell(tc.value); got != tc.want {
+				t.Errorf("escapeMarkdownCell(%q) = %q, want %q", tc.value, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestHistoryCommand_markdownTableAndEscaping(t *testing.T) {
+	newHistoryProject(t)
+	addHistoryRow(t, "aaaaaaaa", "2026-01-01T00:00:00Z", "adds a|pipe", "summary\nwith a newline")
+	withHistoryFormat(t, historyFormatMD, false)
+
+	output := captureStdout(t, func() {
+		if err := historyCmd.RunE(historyCmd, []string{}); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected header, separator and one row, got %d lines: %q", len(lines), output)
+	}
+	if lines[0] != "| ID | Created At | Message | Summary |" {
+		t.Errorf("unexpected header: %q", lines[0])
+	}
+	if lines[1] != "| --- | --- | --- | --- |" {
+		t.Errorf("unexpected separator: %q", lines[1])
+	}
+	want := "| aaaaaaaa | 2026-01-01T00:00:00Z | adds a\\|pipe | summary with a newline |"
+	if lines[2] != want {
+		t.Errorf("expected row %q, got %q", want, lines[2])
+	}
+}
+
+func TestHistoryCommand_markdownWithNoEntriesStillWritesHeader(t *testing.T) {
+	newHistoryProject(t)
+	withHistoryFormat(t, historyFormatMD, false)
+
+	output := captureStdout(t, func() {
+		if err := historyCmd.RunE(historyCmd, []string{}); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	want := "| ID | Created At | Message | Summary |\n| --- | --- | --- | --- |\n"
+	if output != want {
+		t.Errorf("expected a header-only table %q, got %q", want, output)
+	}
+}
+
+func TestHistoryCommand_csvQuotesAndRoundTrips(t *testing.T) {
+	newHistoryProject(t)
+	addHistoryRow(t, "aaaaaaaa", "2026-01-01T00:00:00Z", `comma, "quote" and
+newline`, "")
+	withHistoryFormat(t, historyFormatCSV, false)
+
+	output := captureStdout(t, func() {
+		if err := historyCmd.RunE(historyCmd, []string{}); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	records, err := csv.NewReader(strings.NewReader(output)).ReadAll()
+	if err != nil {
+		t.Fatalf("expected parseable CSV, got %q: %v", output, err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("expected a header and one row, got %d records: %q", len(records), output)
+	}
+	wantHeader := []string{"id", "created_at", "message", "summary"}
+	if strings.Join(records[0], ",") != strings.Join(wantHeader, ",") {
+		t.Errorf("expected header %v, got %v", wantHeader, records[0])
+	}
+	// The message survives the round trip intact, unlike in Markdown where
+	// newlines have to be collapsed to keep one entry on one row.
+	wantRow := []string{"aaaaaaaa", "2026-01-01T00:00:00Z", "comma, \"quote\" and\nnewline", ""}
+	for i := range wantRow {
+		if records[1][i] != wantRow[i] {
+			t.Errorf("field %d: expected %q, got %q", i, wantRow[i], records[1][i])
+		}
+	}
+}
+
+func TestHistoryCommand_defaultAndExplicitTextAreByteIdentical(t *testing.T) {
+	newHistoryProject(t)
+	addHistoryRow(t, "aaaaaaaa", "2026-01-01T00:00:00Z", "first", "a summary")
+	addHistoryRow(t, "bbbbbbbb", "2026-01-02T00:00:00Z", "second", "")
+
+	defaultOutput := captureStdout(t, func() {
+		if err := historyCmd.RunE(historyCmd, []string{}); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	withHistoryFormat(t, historyFormatText, false)
+	explicitOutput := captureStdout(t, func() {
+		if err := historyCmd.RunE(historyCmd, []string{}); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	if defaultOutput != explicitOutput {
+		t.Errorf("--format text changed the default rendering:\ndefault:  %q\nexplicit: %q",
+			defaultOutput, explicitOutput)
+	}
+	if defaultOutput == "" {
+		t.Error("expected the text renderer to print something")
+	}
+}
+
+func TestHistoryCommand_legacyJSONMatchesFormatJSON(t *testing.T) {
+	newHistoryProject(t)
+	addHistoryRow(t, "aaaaaaaa", "2026-01-01T00:00:00Z", "first", "a summary")
+
+	withHistoryFormat(t, "", true)
+	legacyOutput := captureStdout(t, func() {
+		if err := historyCmd.RunE(historyCmd, []string{}); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	jsonOutput = false
+	historyCmd.Flags().Lookup("json").Changed = false
+	withHistoryFormat(t, historyFormatJSON, false)
+	formatOutput := captureStdout(t, func() {
+		if err := historyCmd.RunE(historyCmd, []string{}); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	if legacyOutput != formatOutput {
+		t.Errorf("--json and --format json disagree:\n--json:        %q\n--format json: %q",
+			legacyOutput, formatOutput)
+	}
+	var entries []historyEntry
+	if err := json.Unmarshal([]byte(formatOutput), &entries); err != nil {
+		t.Fatalf("expected valid JSON, got %q: %v", formatOutput, err)
+	}
+}
+
+func TestHistoryCommand_rejectsUnknownFormatWithoutPrinting(t *testing.T) {
+	newHistoryProject(t)
+	addHistoryRow(t, "aaaaaaaa", "2026-01-01T00:00:00Z", "first", "")
+	withHistoryFormat(t, "yaml", false)
+
+	var err error
+	output := captureStdout(t, func() {
+		err = historyCmd.RunE(historyCmd, []string{})
+	})
+
+	if err == nil {
+		t.Fatal("expected an unsupported format to be rejected")
+	}
+	if !strings.Contains(err.Error(), `unsupported --format "yaml"`) {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if output != "" {
+		t.Errorf("expected no output before the format was rejected, got %q", output)
+	}
+}
+
+func TestHistoryCommand_rejectsLegacyJSONWithConflictingFormat(t *testing.T) {
+	newHistoryProject(t)
+	addHistoryRow(t, "aaaaaaaa", "2026-01-01T00:00:00Z", "first", "")
+	withHistoryFormat(t, historyFormatCSV, true)
+
+	var err error
+	output := captureStdout(t, func() {
+		err = historyCmd.RunE(historyCmd, []string{})
+	})
+
+	if err == nil {
+		t.Fatal("expected --json with --format csv to be rejected")
+	}
+	if !strings.Contains(err.Error(), "--json conflicts with --format csv") {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if output != "" {
+		t.Errorf("expected no output before the conflict was rejected, got %q", output)
+	}
+}
+
+func TestHistoryCommand_legacySchemaRendersEveryFormat(t *testing.T) {
+	// A database written before the summary column existed falls back to the
+	// two-column query, so every renderer must cope with empty message and
+	// summary fields rather than assuming the wide schema.
+	newLegacyProject(t)
+	addSnapshotRow(t, "aaaaaaaa", ".eko/snapshots/aaaaaaaa", "2026-01-01T00:00:00Z")
+
+	for _, format := range []string{historyFormatMD, historyFormatCSV, historyFormatJSON} {
+		t.Run(format, func(t *testing.T) {
+			withHistoryFormat(t, format, false)
+			output := captureStdout(t, func() {
+				if err := historyCmd.RunE(historyCmd, []string{}); err != nil {
+					t.Fatal(err)
+				}
+			})
+			if !strings.Contains(output, "aaaaaaaa") {
+				t.Errorf("expected %s output to contain the snapshot id, got %q", format, output)
+			}
+		})
+	}
+}
+
+func TestHistoryCommand_badFormatFailsBeforeTouchingTheDatabase(t *testing.T) {
+	// The format is resolved before db.InitDB(), which would otherwise create
+	// .eko/db.sqlite. A marker-only .eko proves the ordering: if resolution
+	// moved after the open, running with a bad format would leave a database
+	// behind for a command that never got as far as reading one.
+	setupTestDir(t)
+	if err := os.MkdirAll(".eko", 0755); err != nil {
+		t.Fatal(err)
+	}
+	withHistoryFormat(t, "yaml", false)
+
+	if err := historyCmd.RunE(historyCmd, []string{}); err == nil {
+		t.Fatal("expected an unsupported format to be rejected")
+	}
+
+	for _, name := range []string{"db.sqlite", "db.sqlite-wal", "db.sqlite-shm"} {
+		assertNotExist(t, filepath.Join(".eko", name))
+	}
+}
+
+// --- eko clean ------------------------------------------------------------
+
+// withCleanFlags sets the clean flags for one test and restores the defaults.
+func withCleanFlags(t *testing.T, keep int, dryRun bool) {
+	t.Helper()
+	cleanKeep, cleanDryRun = keep, dryRun
+	t.Cleanup(func() { cleanKeep, cleanDryRun = 10, false })
 }
 
 // addSnapshot inserts a well-formed snapshot row and creates its directory.
@@ -420,14 +808,6 @@ func hashFile(t *testing.T, path string) string {
 	return fmt.Sprintf("%x", sha256.Sum256(data))
 }
 
-// assertNotExist fails when path exists.
-func assertNotExist(t *testing.T, path string) {
-	t.Helper()
-	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("expected %s not to exist, stat error was %v", path, err)
-	}
-}
-
 // assertDirExists fails when path is not an existing directory.
 func assertDirExists(t *testing.T, path string) {
 	t.Helper()
@@ -440,8 +820,6 @@ func assertDirExists(t *testing.T, path string) {
 		t.Errorf("expected %s to be a directory", path)
 	}
 }
-
-// --- clean command tests ---
 
 func TestCleanCommand_flagDefaults(t *testing.T) {
 	if got := cleanCmd.Flags().Lookup("keep").DefValue; got != "10" {
