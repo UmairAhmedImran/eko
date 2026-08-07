@@ -91,6 +91,28 @@ func CreateSnapshot(db *sql.DB) (id, path string, err error) {
 	return id, manifestPath, nil
 }
 
+// PendingRemovals returns the top-level entries in the working directory that
+// RestoreSnapshot would delete, in directory order.
+//
+// RestoreSnapshot calls this to build its own delete list, so anything shown to the
+// user from here is exactly what will be removed — the two cannot drift apart.
+func PendingRemovals() ([]string, error) {
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		return nil, err
+	}
+
+	// We always keep the .eko directory and other ignored folders/files so
+	// metadata/dependencies are preserved.
+	var toRemove []string
+	for _, e := range entries {
+		if !util.ShouldIgnore(e.Name(), e.IsDir()) {
+			toRemove = append(toRemove, e.Name())
+		}
+	}
+	return toRemove, nil
+}
+
 // RestoreSnapshot reverts the working directory to the state captured in path.
 //
 // path may be:
