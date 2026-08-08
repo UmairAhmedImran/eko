@@ -2,25 +2,26 @@
 
 This document is a comprehensive, ground-truth architectural reference for **Eko** — derived directly from the source code. It covers every layer: CLI, concurrency engines, AI abstraction, storage schema, CI/CD, data flows, and error handling contracts.
 
----
-
 ## Table of Contents
 
 1. [High-Level System Overview](#1-high-level-system-overview)
 2. [Package Dependency Graph](#2-package-dependency-graph)
 3. [CLI Command Layer](#3-cli-command-layer)
-4. [Worker-Pool Concurrency Engine](#4-worker-pool-concurrency-engine)
-5. [Lock-Free Atomic Restore](#5-lock-free-atomic-restore-cas)
-6. [AI Provider Abstraction & Fallback Chain](#6-ai-provider-abstraction--fallback-chain)
-7. [Diff & ChangeSet Engine](#7-diff--changeset-engine)
-8. [Storage Layer & SQLite Schema](#8-storage-layer--sqlite-schema)
-9. [Filesystem Layout](#9-filesystem-layout)
-10. [End-to-End Sequence: `eko save --ai`](#10-end-to-end-sequence-eko-save---ai)
-11. [End-to-End Sequence: `eko restore`](#11-end-to-end-sequence-eko-restore)
-12. [End-to-End Sequence: `eko clean`](#12-end-to-end-sequence-eko-clean)
-13. [Error Handling & Fallback Strategy](#13-error-handling--fallback-strategy)
-14. [CI/CD Pipeline](#14-cicd-pipeline)
-15. [Environment Variable Lifecycle](#15-environment-variable-lifecycle)
+4. [Content-Addressable Storage (CAS) & Manifest Engine](#4-content-addressable-storage-cas--manifest-engine)
+5. [Incremental Hash Cache (SQLite)](#5-incremental-hash-cache-sqlite)
+6. [Worker-Pool Concurrency Engine](#6-worker-pool-concurrency-engine)
+7. [Lock-Free Atomic Restore (CAS)](#7-lock-free-atomic-restore-cas)
+8. [AI Provider Abstraction & Fallback Chain](#8-ai-provider-abstraction--fallback-chain)
+9. [Diff & ChangeSet Engine](#9-diff--changeset-engine)
+10. [Storage Layer & SQLite Schema](#10-storage-layer--sqlite-schema)
+11. [Filesystem Layout](#11-filesystem-layout)
+12. [End-to-End Sequence: `eko save --ai`](#12-end-to-end-sequence-eko-save---ai)
+13. [End-to-End Sequence: `eko restore`](#13-end-to-end-sequence-eko-restore)
+14. [End-to-End Sequence: `eko clean` & Garbage Collection](#14-end-to-end-sequence-eko-clean--garbage-collection)
+15. [End-to-End Sequence: `eko migrate`](#15-end-to-end-sequence-eko-migrate)
+16. [Error Handling & Fallback Strategy](#16-error-handling--fallback-strategy)
+17. [CI/CD Pipeline](#17-cicd-pipeline)
+18. [Future Performance Optimization Roadmap](#18-future-performance-optimization-roadmap)
 
 ---
 
