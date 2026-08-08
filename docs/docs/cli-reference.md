@@ -20,6 +20,17 @@ Exhaustive reference guide for all commands, flags, options, and aliases in the 
 | [`eko tag`](#6-eko-tag) | None | Assign human-readable tag/alias to a snapshot | `<snapshot-id>`, `<tag-name>` |
 | [`eko clean`](#7-eko-clean) | None | Remove old snapshots & garbage-collect blobs | `--keep`, `--dry-run` |
 | [`eko migrate`](#8-eko-migrate) | None | Convert legacy snapshots to CAS format | `--dry-run` |
+| [`eko ai status`](#9-eko-ai-status) | None | Intent-based workspace status & file role analysis | None |
+| [`eko ai review`](#10-eko-ai-review) | None | Automated code review & commit risk scoring | None |
+| [`eko ai semdiff`](#11-eko-ai-semdiff) | None | Behavioral semantic diff analysis | None |
+| [`eko ai risk`](#12-eko-ai-risk) | None | Multi-dimensional commit risk evaluation | None |
+| [`eko ai impact`](#13-eko-ai-impact) | None | Subsystem change impact & test suite match | None |
+| [`eko ai bisect`](#14-eko-ai-bisect) | None | Automated AI regression bug isolation | `[failing-test]` |
+| [`eko ai ask`](#15-eko-ai-ask) | None | Query repository architecture memory | `<query>` |
+| [`eko ai owners`](#16-eko-ai-owners) | None | Identify code maintainers & PR reviewers | `<file-path>` |
+| [`eko ai next`](#17-eko-ai-next) | None | AI task & issue recommendation engine | None |
+| [`eko ai security`](#18-eko-ai-security) | None | AI hardcoded secret & vulnerability scanner | None |
+| [`eko ai gate`](#19-eko-ai-gate) | None | AI pre-commit quality gate evaluation | None |
 
 ---
 
@@ -208,6 +219,47 @@ eko migrate
 | Flag | Short | Type | Default | Description |
 | ---- | ----- | ---- | ------- | ----------- |
 | `--dry-run` | | Bool | `false` | Inspect legacy snapshots eligible for migration without modifying files |
+
+---
+
+## 9. `eko ai` — GitMind AI Intelligence Suite
+
+The `eko ai` command suite turns Eko into an architecture-aware AI developer agent.
+
+```bash
+# Intent-based status analysis & file role classification
+eko ai status
+
+# Automated AI code review & commit risk score (0-100)
+eko ai review
+
+# Behavioral semantic diff analysis
+eko ai semdiff
+
+# Multi-dimensional commit risk analysis
+eko ai risk
+
+# Subsystem change impact graph
+eko ai impact
+
+# Automated regression bug isolation
+eko ai bisect "go test ./..."
+
+# Query repository architecture memory
+eko ai ask "Why do we use CAS storage?"
+
+# Code ownership & reviewer match
+eko ai owners internal/snapshot/snapshot.go
+
+# Task & issue recommendation engine
+eko ai next
+
+# AI hardcoded secret & vulnerability scanner
+eko ai security
+
+# AI pre-commit quality gate evaluation
+eko ai gate
+```
 
 ---
 
