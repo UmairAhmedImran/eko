@@ -12,7 +12,7 @@
   <a href="https://goreportcard.com/report/github.com/kavix/eko"><img src="https://goreportcard.com/badge/github.com/kavix/eko" alt="Go Report Card" /></a>
   <a href="https://github.com/kavix/eko/actions/workflows/ci.yml"><img src="https://github.com/kavix/eko/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
-  <a href="GOOD_FIRST_ISSUES.md"><img src="https://img.shields.io/badge/Good%20First%20Issues-30%20Open-brightgreen.svg" alt="Good First Issues" /></a>
+  <a href="GOOD_FIRST_ISSUES.md"><img src="https://img.shields.io/badge/Good%20First%20Issues-29%20Open-brightgreen.svg" alt="Good First Issues" /></a>
   <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-Welcome-brightgreen.svg" alt="PRs Welcome" /></a>
 </p>
 
