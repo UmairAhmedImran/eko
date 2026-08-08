@@ -189,6 +189,69 @@ var aiAskCmd = &cobra.Command{
 	},
 }
 
+var aiOwnersCmd = &cobra.Command{
+	Use:   "owners <file-path>",
+	Short: "Identify code maintainers & recommended PR reviewers",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		targetPath := args[0]
+		fmt.Println(mind.PerformAIOwners(targetPath))
+		return nil
+	},
+}
+
+var aiNextCmd = &cobra.Command{
+	Use:   "next",
+	Short: "AI-driven task & issue recommendation engine",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		fmt.Println(mind.PerformAINext())
+		return nil
+	},
+}
+
+var aiSecurityCmd = &cobra.Command{
+	Use:     "security",
+	Short:   "AI security & hardcoded secret scanner",
+	PreRunE: requireInitialized,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		database := db.InitDB()
+		defer database.Close()
+
+		var prevPath string
+		_ = database.QueryRow("SELECT path FROM snapshots ORDER BY created_at DESC, rowid DESC LIMIT 1").Scan(&prevPath)
+
+		diffs, err := api.BuildDiff(prevPath, ".")
+		if err != nil {
+			return err
+		}
+
+		fmt.Println(mind.PerformAISecurity(diffs))
+		return nil
+	},
+}
+
+var aiGateCmd = &cobra.Command{
+	Use:     "gate",
+	Short:   "AI pre-commit quality gate evaluation",
+	PreRunE: requireInitialized,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		database := db.InitDB()
+		defer database.Close()
+
+		var prevPath string
+		_ = database.QueryRow("SELECT path FROM snapshots ORDER BY created_at DESC, rowid DESC LIMIT 1").Scan(&prevPath)
+
+		diffs, err := api.BuildDiff(prevPath, ".")
+		if err != nil {
+			return err
+		}
+
+		_, report := mind.PerformAIGate(diffs)
+		fmt.Println(report)
+		return nil
+	},
+}
+
 func init() {
 	aiCmd.AddCommand(aiStatusCmd)
 	aiCmd.AddCommand(aiReviewCmd)
@@ -197,5 +260,9 @@ func init() {
 	aiCmd.AddCommand(aiImpactCmd)
 	aiCmd.AddCommand(aiBisectCmd)
 	aiCmd.AddCommand(aiAskCmd)
+	aiCmd.AddCommand(aiOwnersCmd)
+	aiCmd.AddCommand(aiNextCmd)
+	aiCmd.AddCommand(aiSecurityCmd)
+	aiCmd.AddCommand(aiGateCmd)
 	rootCmd.AddCommand(aiCmd)
 }
