@@ -19,11 +19,10 @@ var (
 var saveCmd = &cobra.Command{
 	Use:   "save",
 	Short: "Save project snapshot",
-	Long: `Save creates a new snapshot of the current project state.
+	Long: `Save creates a new snapshot of the current project state into the CAS object store.
 
-A snapshot captures all files in the project directory and stores them
-for later retrieval. Each snapshot is assigned a unique ID that can be
-used with the restore command to revert to this state.`,
+Each snapshot generates a lightweight manifest file and stores unique file blobs in
+.eko/objects/, compressed with gzip and deduplicated across all snapshots.`,
 	Example: `  # Save a snapshot of the current project state
   eko save
 
@@ -44,7 +43,7 @@ used with the restore command to revert to this state.`,
 		var prevPath string
 		_ = database.QueryRow("SELECT path FROM snapshots ORDER BY created_at DESC, rowid DESC LIMIT 1").Scan(&prevPath)
 
-		id, path, err := snapshot.CreateSnapshot()
+		id, path, err := snapshot.CreateSnapshot(database)
 		if err != nil {
 			return err
 		}

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"eko/internal/manifest"
+	"eko/internal/objects"
 	"eko/internal/util"
 	"io/fs"
 	"os"
@@ -23,45 +25,29 @@ type DiffFile struct {
 	Modified string `json:"modified"`
 }
 
-// BuildDiff walks both snapshot dirs, collecting file pairs where content differs.
-func BuildDiff(fromDir, toDir string) ([]DiffFile, error) {
+// BuildDiff walks both snapshot targets (manifest or dir), collecting file pairs where content differs.
+func BuildDiff(fromTarget, toTarget string) ([]DiffFile, error) {
+	fromFiles, err := loadTargetFiles(fromTarget)
+	if err != nil && fromTarget != "" {
+		return nil, err
+	}
+	toFiles, err := loadTargetFiles(toTarget)
+	if err != nil && toTarget != "" {
+		return nil, err
+	}
+
 	seen := map[string]bool{}
+	for k := range fromFiles {
+		seen[k] = true
+	}
+	for k := range toFiles {
+		seen[k] = true
+	}
+
 	var results []DiffFile
-
-	walkDir := func(root string) error {
-		return filepath.Walk(root, func(path string, info fs.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if util.ShouldIgnore(info.Name(), info.IsDir()) {
-				if info.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if info.IsDir() {
-				return nil
-			}
-			rel, _ := filepath.Rel(root, path)
-			seen[rel] = true
-			return nil
-		})
-	}
-	if fromDir != "" {
-		walkDir(fromDir)
-	}
-	if toDir != "" {
-		walkDir(toDir)
-	}
-
 	for rel := range seen {
-		var orig, mod string
-		if fromDir != "" {
-			orig = readFileSafe(filepath.Join(fromDir, rel))
-		}
-		if toDir != "" {
-			mod = readFileSafe(filepath.Join(toDir, rel))
-		}
+		orig := fromFiles[rel]
+		mod := toFiles[rel]
 		if orig == mod {
 			continue
 		}
@@ -74,10 +60,59 @@ func BuildDiff(fromDir, toDir string) ([]DiffFile, error) {
 	return results, nil
 }
 
-func readFileSafe(path string) string {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return ""
+func loadTargetFiles(target string) (map[string]string, error) {
+	res := make(map[string]string)
+	if target == "" {
+		return res, nil
 	}
-	return string(b)
+
+	// Check if target is a manifest file or ID
+	ekoDir := ".eko"
+	id := manifest.IDFromPath(target)
+
+	if manifest.Exists(ekoDir, id) {
+		m, err := manifest.Read(ekoDir, id)
+		if err != nil {
+			return nil, err
+		}
+		store, err := objects.New(ekoDir)
+		if err != nil {
+			return nil, err
+		}
+
+		for rel, entry := range m.Tree {
+			b, err := store.Get(entry.Hash)
+			if err == nil {
+				res[rel] = string(b)
+			}
+		}
+		return res, nil
+	}
+
+	// Fallback to reading directory
+	if info, err := os.Stat(target); err == nil && info.IsDir() {
+		err := filepath.Walk(target, func(path string, info fs.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if util.ShouldIgnore(info.Name(), info.IsDir()) {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if info.IsDir() {
+				return nil
+			}
+			rel, _ := filepath.Rel(target, path)
+			relSlash := filepath.ToSlash(rel)
+			if b, err := os.ReadFile(path); err == nil {
+				res[relSlash] = string(b)
+			}
+			return nil
+		})
+		return res, err
+	}
+
+	return res, nil
 }
