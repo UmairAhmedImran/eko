@@ -61,6 +61,8 @@ func CreateSnapshot(db *sql.DB) (id, path string, err error) {
 	if err != nil {
 		// Hash cache failure is non-fatal: fall back to always hashing.
 		hc = nil
+	} else {
+		defer hc.Close()
 	}
 
 	tree, err := buildTree(store, hc)

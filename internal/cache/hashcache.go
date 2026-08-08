@@ -17,14 +17,19 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"sync"
 )
 
-// HashCache wraps the db.sqlite hash_cache table.
+// HashCache wraps the db.sqlite hash_cache table with prepared statement caching
+// and thread-safe serializability.
 type HashCache struct {
-	db *sql.DB
+	db         *sql.DB
+	stmtLookup *sql.Stmt
+	stmtStore  *sql.Stmt
+	mu         sync.Mutex // serializes DB writes to prevent SQLite lock contention
 }
 
-// New initialises the hash_cache table (idempotent) and returns a HashCache.
+// New initialises the hash_cache table and pre-compiles prepared SQL statements.
 func New(db *sql.DB) (*HashCache, error) {
 	_, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS hash_cache (
@@ -38,26 +43,50 @@ func New(db *sql.DB) (*HashCache, error) {
 	if err != nil {
 		return nil, fmt.Errorf("hash_cache: init table: %w", err)
 	}
-	return &HashCache{db: db}, nil
+
+	stmtLookup, err := db.Prepare("SELECT sha256 FROM hash_cache WHERE path=? AND mtime_ns=? AND size=?")
+	if err != nil {
+		return nil, fmt.Errorf("hash_cache: prepare lookup: %w", err)
+	}
+
+	stmtStore, err := db.Prepare("INSERT OR REPLACE INTO hash_cache (path, mtime_ns, size, sha256) VALUES (?, ?, ?, ?)")
+	if err != nil {
+		stmtLookup.Close()
+		return nil, fmt.Errorf("hash_cache: prepare store: %w", err)
+	}
+
+	return &HashCache{
+		db:         db,
+		stmtLookup: stmtLookup,
+		stmtStore:  stmtStore,
+	}, nil
 }
 
-// Lookup returns the cached sha256 for a file, or ("", false) on miss.
-// A cache hit means mtime_ns AND size both match the stored entry for path.
+// Close releases pre-compiled SQL statements.
+func (c *HashCache) Close() {
+	if c.stmtLookup != nil {
+		c.stmtLookup.Close()
+	}
+	if c.stmtStore != nil {
+		c.stmtStore.Close()
+	}
+}
+
+// Lookup returns the cached sha256 for a file using pre-compiled prepared statements.
 func (c *HashCache) Lookup(path string, info os.FileInfo) (hash string, ok bool) {
-	err := c.db.QueryRow(
-		"SELECT sha256 FROM hash_cache WHERE path=? AND mtime_ns=? AND size=?",
-		path, info.ModTime().UnixNano(), info.Size(),
-	).Scan(&hash)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	err := c.stmtLookup.QueryRow(path, info.ModTime().UnixNano(), info.Size()).Scan(&hash)
 	return hash, err == nil
 }
 
-// Store saves or updates the cache entry for path.
+// Store saves or updates the cache entry using pre-compiled prepared statements.
 func (c *HashCache) Store(path string, info os.FileInfo, hash string) error {
-	_, err := c.db.Exec(
-		`INSERT OR REPLACE INTO hash_cache (path, mtime_ns, size, sha256)
-		 VALUES (?, ?, ?, ?)`,
-		path, info.ModTime().UnixNano(), info.Size(), hash,
-	)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	_, err := c.stmtStore.Exec(path, info.ModTime().UnixNano(), info.Size(), hash)
 	if err != nil {
 		return fmt.Errorf("hash_cache: store %s: %w", path, err)
 	}
@@ -65,8 +94,10 @@ func (c *HashCache) Store(path string, info os.FileInfo, hash string) error {
 }
 
 // Purge removes stale entries for paths that no longer exist.
-// Called periodically to keep the cache table lean.
 func (c *HashCache) Purge(existingPaths map[string]bool) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	rows, err := c.db.Query("SELECT DISTINCT path FROM hash_cache")
 	if err != nil {
 		return err
