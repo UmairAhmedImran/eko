@@ -13,16 +13,16 @@ This document details **Eko's** underlying software architecture, component cell
 
 Eko is composed of three core architectural layers:
 
-1. **CLI Command Layer (`cmd/`)**: Built on the Go Cobra framework (`init`, `save`, `restore`, `history`, `summary`, `clean`, `migrate`).
+1. **CLI Command Layer (`cmd/`)**: Built on the Go Cobra framework (`init`, `save`, `restore`, `history`, `summary`, `clean`, `migrate`, `tag`, `ai`).
 2. **Engine & Utility Layer (`internal/`)**:
    - `snapshot`: Orchestrates snapshot creation, manifest writing, env serialization, and atomic directory restores.
    - `objects`: Content-Addressable Storage (CAS) engine (`.eko/objects/<prefix>/<hash>.gz`), gzip compression, atomic writes, and mark-and-sweep garbage collection.
    - `manifest`: Lightweight JSON snapshot manifests (`.eko/manifests/<id>.json`).
    - `cache`: Incremental SQLite hash cache (`hash_cache` table in `db.sqlite`) to skip reading unchanged files.
+   - `ai/mind`: **GitMind AI Reasoning Engine** (handles all 20 AI capabilities: status, review, semdiff, risk, impact, bisect, ask, owners, next, security, gate, explain, test, conflict, pr).
    - `util`: Worker-pool directory copy engine and thread-safe error reporting.
    - `api`: File diff and workspace change calculators.
-   - `ai`: Multi-provider AI change summary generator (Gemini, OpenAI, Heuristic fallback).
-3. **Persistence Layer (`.eko/`)**: Local SQLite database (`db.sqlite`), CAS object store (`objects/`), and snapshot tree manifests (`manifests/`).
+3. **Persistence Layer (`.eko/`)**: Local SQLite database (`db.sqlite` + `hash_cache` + tags), CAS object store (`objects/`), and snapshot tree manifests (`manifests/`).
 
 ```mermaid
 graph TD
@@ -35,28 +35,33 @@ graph TD
         SummaryCmd["summary.go (eko summary)"]
         CleanCmd["clean.go (eko clean)"]
         MigrateCmd["migrate.go (eko migrate)"]
+        TagCmd["tag.go (eko tag)"]
+        AICmd["ai.go (eko ai <subcommand>)"]
     end
 
     subgraph Core ["2. Core Engines & Utilities (internal/)"]
+        GitMindEngine["GitMind AI Reasoning Engine\n(internal/ai/mind/gitmind.go)"]
         SnapshotEng["Snapshot Engine\n(internal/snapshot/)"]
         CASEngine["CAS Object Store\n(internal/objects/)"]
         ManifestEngine["Manifest Engine\n(internal/manifest/)"]
         CacheEngine["Hash Cache Engine\n(internal/cache/)"]
         FSEngine["Worker-Pool FS Engine\n(internal/util/fs.go)"]
         DiffEngine["Diff & Comparison Engine\n(internal/api/diff.go)"]
-        AIEngine["AI Summary Engine\n(internal/ai/)"]
+        AIEngine["AI Provider Layer\n(internal/ai/provider.go)"]
     end
 
     subgraph Storage ["3. Persistence Layer (.eko/)"]
-        SQLiteDB[("SQLite Database\n.eko/db.sqlite")]
+        SQLiteDB[("SQLite Database\n.eko/db.sqlite (metadata + tags + hash_cache)")]
         CASObjects["CAS Object Store\n.eko/objects/<prefix>/<hash>.gz"]
         Manifests["Tree Manifests\n.eko/manifests/<id>.json"]
         EnvState[".eko_env_vars.json"]
     end
 
-    RootCmd --> InitCmd & SaveCmd & RestoreCmd & HistoryCmd & SummaryCmd & CleanCmd & MigrateCmd
+    RootCmd --> InitCmd & SaveCmd & RestoreCmd & HistoryCmd & SummaryCmd & CleanCmd & MigrateCmd & TagCmd & AICmd
 
-    InitCmd -->|Initialize Schema| SQLiteDB
+    AICmd -->|Reason & Audit| GitMindEngine
+    GitMindEngine -->|Analyze Diffs| DiffEngine
+    GitMindEngine -->|Invoke Models| AIEngine
     SaveCmd -->|Check Hash Cache| CacheEngine
     SaveCmd -->|Store Blobs| CASEngine --> CASObjects
     SaveCmd -->|Write Manifest| ManifestEngine --> Manifests
@@ -64,7 +69,6 @@ graph TD
     RestoreCmd -->|Extract Tree| CASEngine
     CleanCmd -->|Garbage Collect Blobs| CASEngine
     MigrateCmd -->|Convert Legacy Dirs| CASEngine & ManifestEngine
-    SummaryCmd -->|Compute Diff| DiffEngine
 ```
 
 ---
