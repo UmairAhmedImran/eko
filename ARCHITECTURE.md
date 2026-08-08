@@ -526,41 +526,13 @@ sequenceDiagram
     participant CLI as cmd/restore.go
     participant DB  as internal/db
     participant Snap as internal/snapshot
-    participant FS  as internal/util/fs.go
+    participant CAS as internal/objects
+    participant FS  as Working Directory
 
     Dev->>CLI: eko restore 8c9d1a2f
 
     CLI->>DB: InitDB()
     CLI->>DB: SELECT path FROM snapshots WHERE id = '8c9d1a2f'
-    DB-->>CLI: path = ".eko/snapshots/8c9d1a2f"
-
-    CLI->>Snap: RestoreSnapshot(".eko/snapshots/8c9d1a2f")
-
-    Note over Snap: Phase 1 — Parallel Delete
-    Snap->>FS: os.ReadDir(".") → top-level entries
-    FS-->>Snap: [main.go, internal/, go.mod, go.sum, ...]
-    Snap->>Snap: Filter: skip .eko, skip ShouldIgnore()
-
-    par Parallel goroutines (one per top-level entry)
-        Snap->>FS: go os.RemoveAll("main.go")
-        Snap->>FS: go os.RemoveAll("internal/")
-        Snap->>FS: go os.RemoveAll("go.mod")
-    end
-
-    Note over Snap: atomic.Pointer[error] CAS — captures first error
-    Snap->>Snap: wg.Wait()
-    Snap->>Snap: firstErr.Load()
-
-    alt error detected
-        Snap-->>CLI: return error (Phase 2 never runs)
-        CLI-->>Dev: Error: ...
-    else no error
-        Note over Snap: Phase 2 — Parallel Copy
-        Snap->>FS: util.CopyDir(".eko/snapshots/8c9d1a2f", ".")
-        FS-->>Snap: ✓ workspace restored
-
-        Note over Snap: Phase 3 — Environment Restore
-        Snap->>Snap: restoreEnvVars(".eko/snapshots/8c9d1a2f")
         Note over Snap: Read .eko_env_vars.json → write .eko_env_restore.sh
         Snap-->>CLI: nil
 
