@@ -13,11 +13,12 @@ Exhaustive reference guide for all commands, flags, options, and aliases in the 
 | Command | Aliases | Description | Key Flags |
 | ------- | ------- | ----------- | --------- |
 | [`eko init`](#1-eko-init) | None | Initialize Eko project & SQLite database | None |
-| [`eko save`](#2-eko-save) | None | Capture project snapshot | `-m`, `-a/--ai`, `--provider` |
+| [`eko save`](#2-eko-save) | None | Capture project snapshot in CAS object store | `-m`, `-a/--ai`, `--provider` |
 | [`eko summary`](#3-eko-summary-alias-eko-summarize) | `summarize` | Generate AI-powered change summary | `-j/--json`, `-p/--provider`, `-s/--save` |
 | [`eko history`](#4-eko-history) | None | List snapshot history | `-j/--json`, `-v/--verbose` |
 | [`eko restore`](#5-eko-restore-snapshot-id) | None | Revert project to a past snapshot state | `<snapshot-id>` |
-| [`eko clean`](#6-eko-clean) | None | Remove old snapshots and free disk space | `--keep`, `--dry-run` |
+| [`eko clean`](#6-eko-clean) | None | Remove old snapshots & garbage-collect blobs | `--keep`, `--dry-run` |
+| [`eko migrate`](#7-eko-migrate) | None | Convert legacy snapshots to CAS format | `--dry-run` |
 
 ---
 
@@ -172,6 +173,27 @@ eko clean --keep 5 --dry-run
 2. **Path Confinement**: A recorded path is only accepted when it resolves, through symlinks, to a direct child of `.eko/snapshots` whose directory name matches the snapshot ID.
 3. **Inert Dry Run**: `--dry-run` opens the database read-only and rejects writes at the connection level, so it cannot change a single byte.
 4. **Progress on Failure**: Removal is not atomic. If a deletion fails partway, the error reports exactly how many snapshots were removed, and the next run continues from there.
+5. **CAS Garbage Collection**: Automatically purges orphaned blobs from `.eko/objects/` that are no longer referenced by any snapshot manifest.
+
+---
+
+## 7. `eko migrate`
+
+Converts legacy full-directory snapshots (`.eko/snapshots/<id>/`) to the high-efficiency Content-Addressable Storage (CAS) object store and JSON manifest format (`.eko/manifests/<id>.json`).
+
+```bash
+# Preview what snapshots will be converted
+eko migrate --dry-run
+
+# Run migration
+eko migrate
+```
+
+### Flags
+
+| Flag | Short | Type | Default | Description |
+| ---- | ----- | ---- | ------- | ----------- |
+| `--dry-run` | | Bool | `false` | Inspect legacy snapshots eligible for migration without modifying files |
 
 ---
 
