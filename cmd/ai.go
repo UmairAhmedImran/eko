@@ -252,6 +252,77 @@ var aiGateCmd = &cobra.Command{
 	},
 }
 
+var aiExplainCmd = &cobra.Command{
+	Use:   "explain <file-path>",
+	Short: "Explain file purpose, architecture role & design decisions",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		filePath := args[0]
+		fmt.Println(mind.PerformAIExplain(filePath, "", ""))
+		return nil
+	},
+}
+
+var aiTestCmd = &cobra.Command{
+	Use:     "test",
+	Short:   "Generate unit & integration testing strategy for diff",
+	PreRunE: requireInitialized,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		database := db.InitDB()
+		defer database.Close()
+
+		var prevPath string
+		_ = database.QueryRow("SELECT path FROM snapshots ORDER BY created_at DESC, rowid DESC LIMIT 1").Scan(&prevPath)
+
+		diffs, err := api.BuildDiff(prevPath, ".")
+		if err != nil {
+			return err
+		}
+
+		fmt.Println(mind.PerformAITest(diffs))
+		return nil
+	},
+}
+
+var aiConflictCmd = &cobra.Command{
+	Use:   "conflict [file-path]",
+	Short: "AI merge conflict resolution & intent guide",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		filePath := "conflicted_file.go"
+		if len(args) > 0 {
+			filePath = args[0]
+		}
+		fmt.Println(mind.PerformAIConflict(filePath, ""))
+		return nil
+	},
+}
+
+var aiPRCmd = &cobra.Command{
+	Use:     "pr [base-branch]",
+	Short:   "Generate GitHub Pull Request description from diff",
+	PreRunE: requireInitialized,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		baseBranch := "main"
+		if len(args) > 0 {
+			baseBranch = args[0]
+		}
+
+		database := db.InitDB()
+		defer database.Close()
+
+		var prevPath string
+		_ = database.QueryRow("SELECT path FROM snapshots ORDER BY created_at DESC, rowid DESC LIMIT 1").Scan(&prevPath)
+
+		diffs, err := api.BuildDiff(prevPath, ".")
+		if err != nil {
+			return err
+		}
+
+		fmt.Println(mind.PerformAIPR(baseBranch, diffs))
+		return nil
+	},
+}
+
 func init() {
 	aiCmd.AddCommand(aiStatusCmd)
 	aiCmd.AddCommand(aiReviewCmd)
@@ -264,5 +335,9 @@ func init() {
 	aiCmd.AddCommand(aiNextCmd)
 	aiCmd.AddCommand(aiSecurityCmd)
 	aiCmd.AddCommand(aiGateCmd)
+	aiCmd.AddCommand(aiExplainCmd)
+	aiCmd.AddCommand(aiTestCmd)
+	aiCmd.AddCommand(aiConflictCmd)
+	aiCmd.AddCommand(aiPRCmd)
 	rootCmd.AddCommand(aiCmd)
 }
