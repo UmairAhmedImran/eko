@@ -42,10 +42,14 @@ graph TD
         History["history.go\n--json --verbose --format"]
         Summary["summary.go\n--provider --json --save"]
         Clean["clean.go\n--keep --dry-run"]
+        Migrate["migrate.go\n--dry-run"]
     end
 
     subgraph Core["2️⃣  Core Engines  (internal/)"]
         SnapEng["snapshot.go\nCreateSnapshot()\nRestoreSnapshot()"]
+        CASEng["objects/store.go\nPut() / Get()\nExtractTo() / RestoreTree()"]
+        ManifestEng["manifest/manifest.go\nWrite() / Read()\nAllHashes()"]
+        CacheEng["cache/hashcache.go\nLookup() / Store()"]
         FSEng["util/fs.go\nCopyDir()\nShouldIgnore()"]
         DiffEng["api/diff.go\nBuildDiff()"]
         AIEng["ai/summary.go\nGenerateSnapshotSummary()"]
@@ -59,30 +63,32 @@ graph TD
     end
 
     subgraph Storage["4️⃣  Persistence Layer  (.eko/)"]
-        DB[("db.sqlite\nSQLite WAL")]
-        SnapDir[".eko/snapshots/&lt;id&gt;/\nFull file tree copy"]
+        DB[("db.sqlite\nSQLite WAL + hash_cache")]
+        ObjStore[".eko/objects/&lt;prefix&gt;/&lt;hash&gt;.gz\nContent-Addressable Storage"]
+        ManifestDir[".eko/manifests/&lt;id&gt;.json\nLightweight tree manifest"]
         EnvFile[".eko_env_vars.json\nShell environment dump"]
         RestoreSh[".eko_env_restore.sh\nGenerated on restore"]
     end
 
     Terminal -->|"eko &lt;command&gt;"| Root
-    Root --> Init & Save & Restore & History & Summary & Clean
+    Root --> Init & Save & Restore & History & Summary & Clean & Migrate
 
-    Save --> SnapEng --> FSEng --> SnapDir
+    Save --> SnapEng --> CacheEng --> DB
+    SnapEng --> CASEng --> ObjStore
+    SnapEng --> ManifestEng --> ManifestDir
     Save --> AIEng --> ProviderAbs
     ProviderAbs --> Gemini & OpenAI & Heuristic
     Save -->|"INSERT"| DB
 
     Restore --> SnapEng
     SnapEng -->|"Phase 1: RemoveAll"| FSEng
-    SnapEng -->|"Phase 2: CopyDir"| FSEng
+    SnapEng -->|"Phase 2: RestoreTree"| CASEng
     SnapEng --> RestoreSh
 
     History & Summary -->|"SELECT"| DB
     Summary --> DiffEng --> AIEng
-    Clean -->|"DELETE rows + RemoveAll dirs"| DB & SnapDir
-
-    SnapEng --> EnvFile
+    Clean -->|"DELETE manifests + Mark&Sweep GC"| DB & ManifestDir & ObjStore
+    Migrate -->|"Convert legacy dirs to CAS"| CASEng & ManifestEng
 ```
 
 ---
