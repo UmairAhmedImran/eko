@@ -101,8 +101,101 @@ var aiReviewCmd = &cobra.Command{
 	},
 }
 
+var aiSemDiffCmd = &cobra.Command{
+	Use:     "semdiff",
+	Short:   "Behavioral semantic diff analysis",
+	PreRunE: requireInitialized,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		database := db.InitDB()
+		defer database.Close()
+
+		var prevPath string
+		_ = database.QueryRow("SELECT path FROM snapshots ORDER BY created_at DESC, rowid DESC LIMIT 1").Scan(&prevPath)
+
+		diffs, err := api.BuildDiff(prevPath, ".")
+		if err != nil {
+			return err
+		}
+
+		fmt.Println(mind.PerformAISemDiff(diffs))
+		return nil
+	},
+}
+
+var aiRiskCmd = &cobra.Command{
+	Use:     "risk",
+	Short:   "Multi-dimensional commit risk analysis",
+	PreRunE: requireInitialized,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		database := db.InitDB()
+		defer database.Close()
+
+		var prevPath string
+		_ = database.QueryRow("SELECT path FROM snapshots ORDER BY created_at DESC, rowid DESC LIMIT 1").Scan(&prevPath)
+
+		diffs, err := api.BuildDiff(prevPath, ".")
+		if err != nil {
+			return err
+		}
+
+		_, report := mind.PerformAIRiskAnalysis(diffs)
+		fmt.Println(report)
+		return nil
+	},
+}
+
+var aiImpactCmd = &cobra.Command{
+	Use:     "impact",
+	Short:   "Change impact & subsystem dependency graph",
+	PreRunE: requireInitialized,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		database := db.InitDB()
+		defer database.Close()
+
+		var prevPath string
+		_ = database.QueryRow("SELECT path FROM snapshots ORDER BY created_at DESC, rowid DESC LIMIT 1").Scan(&prevPath)
+
+		diffs, err := api.BuildDiff(prevPath, ".")
+		if err != nil {
+			return err
+		}
+
+		fmt.Println(mind.PerformAIImpactAnalysis(diffs))
+		return nil
+	},
+}
+
+var aiBisectCmd = &cobra.Command{
+	Use:   "bisect [failing-test]",
+	Short: "Automated AI regression bug isolation",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		testTarget := "go test ./..."
+		if len(args) > 0 {
+			testTarget = args[0]
+		}
+		fmt.Println(mind.PerformAIBisect(testTarget))
+		return nil
+	},
+}
+
+var aiAskCmd = &cobra.Command{
+	Use:   "ask <query>",
+	Short: "Query repository architecture memory",
+	Args:  cobra.MinimumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		query := args[0]
+		fmt.Println(mind.PerformAIAsk(query))
+		return nil
+	},
+}
+
 func init() {
 	aiCmd.AddCommand(aiStatusCmd)
 	aiCmd.AddCommand(aiReviewCmd)
+	aiCmd.AddCommand(aiSemDiffCmd)
+	aiCmd.AddCommand(aiRiskCmd)
+	aiCmd.AddCommand(aiImpactCmd)
+	aiCmd.AddCommand(aiBisectCmd)
+	aiCmd.AddCommand(aiAskCmd)
 	rootCmd.AddCommand(aiCmd)
 }
