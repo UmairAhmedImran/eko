@@ -14,20 +14,20 @@ var restoreCmd = &cobra.Command{
 	Args:    cobra.ExactArgs(1),
 	PreRunE: requireInitialized,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		id := args[0]
+		target := args[0]
 		database := db.InitDB()
 		defer database.Close()
 
-		var path string
-		if err := database.QueryRow("SELECT path FROM snapshots WHERE id=?", id).Scan(&path); err != nil {
-			return fmt.Errorf("snapshot not found: %w", err)
-		}
-
-		err := snapshot.RestoreSnapshot(path)
+		id, path, err := db.ResolveSnapshot(database, target)
 		if err != nil {
 			return err
 		}
-		fmt.Println("Restored:", id)
+
+		err = snapshot.RestoreSnapshot(path)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Restored: %s (tag: %s)\n", id, target)
 
 		return nil
 	},

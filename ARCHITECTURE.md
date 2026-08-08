@@ -44,6 +44,7 @@ graph TD
         Summary["summary.go\n--provider --json --save"]
         Clean["clean.go\n--keep --dry-run"]
         Migrate["migrate.go\n--dry-run"]
+        Tag["tag.go\n&lt;id&gt; &lt;tag-name&gt;"]
     end
 
     subgraph Core["2️⃣  Core Engines  (internal/)"]
