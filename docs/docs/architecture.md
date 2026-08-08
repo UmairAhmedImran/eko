@@ -13,13 +13,16 @@ This document details **Eko's** underlying software architecture, component cell
 
 Eko is composed of three core architectural layers:
 
-1. **CLI Command Layer (`cmd/`)**: Built on the Go Cobra framework (`init`, `save`, `restore`, `history`, `summary`).
+1. **CLI Command Layer (`cmd/`)**: Built on the Go Cobra framework (`init`, `save`, `restore`, `history`, `summary`, `clean`, `migrate`).
 2. **Engine & Utility Layer (`internal/`)**:
-   - `snapshot`: Orchestrates snapshot creation, env serialization, and atomic directory restores.
+   - `snapshot`: Orchestrates snapshot creation, manifest writing, env serialization, and atomic directory restores.
+   - `objects`: Content-Addressable Storage (CAS) engine (`.eko/objects/<prefix>/<hash>.gz`), gzip compression, atomic writes, and mark-and-sweep garbage collection.
+   - `manifest`: Lightweight JSON snapshot manifests (`.eko/manifests/<id>.json`).
+   - `cache`: Incremental SQLite hash cache (`hash_cache` table in `db.sqlite`) to skip reading unchanged files.
    - `util`: Worker-pool directory copy engine and thread-safe error reporting.
    - `api`: File diff and workspace change calculators.
    - `ai`: Multi-provider AI change summary generator (Gemini, OpenAI, Heuristic fallback).
-3. **Persistence Layer (`.eko/`)**: Local SQLite database (`db.sqlite`) and snapshot file tree directory (`snapshots/<id>/`).
+3. **Persistence Layer (`.eko/`)**: Local SQLite database (`db.sqlite`), CAS object store (`objects/`), and snapshot tree manifests (`manifests/`).
 
 ```mermaid
 graph TD
@@ -30,10 +33,15 @@ graph TD
         RestoreCmd["restore.go (eko restore)"]
         HistoryCmd["history.go (eko history)"]
         SummaryCmd["summary.go (eko summary)"]
+        CleanCmd["clean.go (eko clean)"]
+        MigrateCmd["migrate.go (eko migrate)"]
     end
 
     subgraph Core ["2. Core Engines & Utilities (internal/)"]
-        SnapshotEng["Snapshot Engine\n(internal/snapshot/snapshot.go)"]
+        SnapshotEng["Snapshot Engine\n(internal/snapshot/)"]
+        CASEngine["CAS Object Store\n(internal/objects/)"]
+        ManifestEngine["Manifest Engine\n(internal/manifest/)"]
+        CacheEngine["Hash Cache Engine\n(internal/cache/)"]
         FSEngine["Worker-Pool FS Engine\n(internal/util/fs.go)"]
         DiffEngine["Diff & Comparison Engine\n(internal/api/diff.go)"]
         AIEngine["AI Summary Engine\n(internal/ai/)"]
@@ -41,30 +49,22 @@ graph TD
 
     subgraph Storage ["3. Persistence Layer (.eko/)"]
         SQLiteDB[("SQLite Database\n.eko/db.sqlite")]
-        SnapshotDir["Snapshot Storage\n.eko/snapshots/<id>/"]
+        CASObjects["CAS Object Store\n.eko/objects/<prefix>/<hash>.gz"]
+        Manifests["Tree Manifests\n.eko/manifests/<id>.json"]
         EnvState[".eko_env_vars.json"]
     end
 
-    RootCmd --> InitCmd
-    RootCmd --> SaveCmd
-    RootCmd --> RestoreCmd
-    RootCmd --> HistoryCmd
-    RootCmd --> SummaryCmd
+    RootCmd --> InitCmd & SaveCmd & RestoreCmd & HistoryCmd & SummaryCmd & CleanCmd & MigrateCmd
 
     InitCmd -->|Initialize Schema| SQLiteDB
-    SaveCmd -->|Create State| SnapshotEng
+    SaveCmd -->|Check Hash Cache| CacheEngine
+    SaveCmd -->|Store Blobs| CASEngine --> CASObjects
+    SaveCmd -->|Write Manifest| ManifestEngine --> Manifests
     SaveCmd -->|Generate Summary| AIEngine
-    RestoreCmd -->|Restore State| SnapshotEng
-    HistoryCmd -->|Query Log| SQLiteDB
+    RestoreCmd -->|Extract Tree| CASEngine
+    CleanCmd -->|Garbage Collect Blobs| CASEngine
+    MigrateCmd -->|Convert Legacy Dirs| CASEngine & ManifestEngine
     SummaryCmd -->|Compute Diff| DiffEngine
-    SummaryCmd -->|Synthesize Summary| AIEngine
-
-    SnapshotEng -->|Parallel Copy| FSEngine
-    SnapshotEng -->|Record Metadata| SQLiteDB
-    FSEngine -->|Write Files| SnapshotDir
-    SnapshotEng -->|Serialize Env| EnvState
-    AIEngine -->|Read File Pair Diffs| DiffEngine
-    AIEngine -->|Persist Summary| SQLiteDB
 ```
 
 ---
