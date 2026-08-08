@@ -15,6 +15,8 @@ import (
 	"testing"
 
 	"eko/internal/db"
+	"eko/internal/manifest"
+	"eko/internal/objects"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -109,10 +111,29 @@ func TestSaveCommand(t *testing.T) {
 		t.Errorf("expected message 'snapshot', got %q", message)
 	}
 
-	// Verify files exist in the snapshot path
-	snapFilePath := filepath.Join(dir, path, "hello.txt")
-	if content, err := os.ReadFile(snapFilePath); err != nil || string(content) != "hello world" {
-		t.Errorf("expected snapshot to contain 'hello world', got err=%v, content=%s", err, string(content))
+	// Verify files exist in the snapshot (supports both manifest and legacy dir)
+	if manifest.Exists(filepath.Join(dir, ".eko"), id) {
+		m, err := manifest.Read(filepath.Join(dir, ".eko"), id)
+		if err != nil {
+			t.Fatalf("failed to read manifest: %v", err)
+		}
+		store, err := objects.New(filepath.Join(dir, ".eko"))
+		if err != nil {
+			t.Fatalf("failed to open object store: %v", err)
+		}
+		entry, ok := m.Tree["hello.txt"]
+		if !ok {
+			t.Fatalf("hello.txt missing from manifest tree")
+		}
+		b, err := store.Get(entry.Hash)
+		if err != nil || string(b) != "hello world" {
+			t.Errorf("expected snapshot to contain 'hello world', got err=%v, content=%s", err, string(b))
+		}
+	} else {
+		snapFilePath := filepath.Join(dir, path, "hello.txt")
+		if content, err := os.ReadFile(snapFilePath); err != nil || string(content) != "hello world" {
+			t.Errorf("expected snapshot to contain 'hello world', got err=%v, content=%s", err, string(content))
+		}
 	}
 }
 
