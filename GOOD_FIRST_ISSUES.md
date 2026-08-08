@@ -8,141 +8,7 @@ Below is a curated list of beginner-friendly features and enhancements labeled a
 
 ---
 
-## 📌 Issue 1: Add `eko version` command with build commit info
-
-**Difficulty**: Easy (`good first issue`)  
-**Labels**: `good first issue`, `help wanted`, `enhancement`, `cli`
-
-### 🎯 Goal
-Implement an `eko version` subcommand (and `-v` / `--version` flag on the root command) that prints version details, Go runtime version, target OS/Arch, and Git commit hash.
-
-### 💡 Expected Output
-```bash
-$ eko version
-eko version 1.1.0 (darwin/arm64)
-Go version: go1.22.0
-Git commit: 8c9d1a2f
-Built: 2026-08-02
-```
-
-### 🛠️ Implementation Steps
-1. Create `cmd/version.go` defining Cobra command `versionCmd`.
-2. Add global variables `Version`, `Commit`, `BuildDate` set via `-ldflags` during build.
-3. Wire `-v / --version` flag into `cmd/root.go`.
-4. Add unit test in `cmd/commands_test.go`.
-
----
-
-## 📌 Issue 2: Add `eko clean` command to prune old snapshots
-
-**Difficulty**: Medium (`good first issue`)  
-**Labels**: `good first issue`, `help wanted`, `feature`
-
-### 🎯 Goal
-Provide a command to purge old snapshots to free disk space while keeping a specified number of recent snapshots.
-
-### 💡 Expected Usage
-```bash
-# Keep last 5 snapshots and remove older ones
-eko clean --keep 5
-
-# Dry-run to see what would be deleted without deleting
-eko clean --keep 5 --dry-run
-```
-
-### 🛠️ Implementation Steps
-1. Create `cmd/clean.go` with flags `--keep` (default: 10) and `--dry-run` (default: `false`).
-2. Query `snapshots` table in SQLite DB sorted by `created_at DESC`.
-3. For snapshots exceeding the keep count, delete directory `.eko/snapshots/<id>` using `os.RemoveAll` and execute `DELETE FROM snapshots WHERE id = ?`.
-4. Add unit test verifying directory cleanup and DB record deletion.
-
----
-
-## 📌 Issue 3: Support custom `.ekoignore` project configuration file
-
-**Difficulty**: Medium (`good first issue`)  
-**Labels**: `good first issue`, `help wanted`, `feature`
-
-### 🎯 Goal
-Allow developers to place a `.ekoignore` file in their project root to specify custom files and folder glob patterns to exclude from snapshots (e.g. `*.log`, `tmp/`, `vendor/`).
-
-### 💡 Expected Behavior
-If `.ekoignore` exists in the project root:
-```text
-# .ekoignore
-*.log
-tmp/
-coverage/
-```
-`eko save` should automatically skip files matching patterns in `.ekoignore` in addition to default ignored paths (`.eko`, `.git`, `node_modules`).
-
-### 🛠️ Implementation Steps
-1. Update `internal/util/fs.go` function `ShouldIgnore(name string, isDir bool)` to load and parse `.ekoignore` if present.
-2. Use `path/filepath.Match` or standard glob patterns to test filenames.
-3. Add unit tests in `internal/util/fs_test.go`.
-
----
-
-## 📌 Issue 4: Export snapshot history in Markdown, HTML, and CSV formats
-
-**Difficulty**: Easy (`good first issue`)  
-**Labels**: `good first issue`, `help wanted`, `feature`
-
-### 🎯 Goal
-Extend `eko history` to allow exporting snapshot logs in Markdown (`--format md`), HTML (`--format html`), or CSV (`--format csv`) format in addition to `--json`.
-
-### 💡 Expected Usage
-```bash
-# Export history as Markdown table
-eko history --format md
-
-# Export history as CSV
-eko history --format csv
-
-# Export history as styled HTML page
-eko history --format html > history.html
-```
-
-### 🛠️ Implementation Steps
-1. Update `cmd/history.go` to add `--format` string flag (options: `text`, `json`, `md`, `csv`, `html`).
-2. Format entries into Markdown table, CSV format using `encoding/csv`, or styled HTML template.
-3. Add unit tests in `cmd/commands_test.go`.
-
----
-
-## 📌 Issue 5: Add `eko status` command to inspect workspace changes
-
-**Difficulty**: Easy (`good first issue`)  
-**Labels**: `good first issue`, `help wanted`, `enhancement`
-
-### 🎯 Goal
-Implement an `eko status` command that compares the current workspace files with the latest snapshot, showing added, modified, and deleted files (similar to `git status`).
-
-### 💡 Expected Output
-```bash
-$ eko status
-✦ Eko Workspace Status (vs Snapshot 8c9d1a2f)
-
-Modified (2):
-  - main.go
-  - internal/ai/provider.go
-
-Added (1):
-  - config.yaml
-
-Deleted (0):
-  - None
-```
-
-### 🛠️ Implementation Steps
-1. Create `cmd/status.go` with Cobra command `statusCmd`.
-2. Re-use `internal/api/diff.go` to compute diffs between local directory state and latest snapshot.
-3. Colorize output terminal tags (green for added, yellow for modified, red for deleted).
-4. Add unit test in `cmd/commands_test.go`.
-
----
-
-## 📌 Issue 6: Add `eko diff <id1> <id2>` terminal file diff command
+## 📌 Issue 1: Add `eko diff <id1> <id2>` terminal file diff command
 
 **Difficulty**: Medium (`good first issue`)  
 **Labels**: `good first issue`, `help wanted`, `feature`, `cli`
@@ -170,7 +36,7 @@ eko diff 3b7f2a1e 8c9d1a2f
 
 ---
 
-## 📌 Issue 7: Generate shell completion scripts (`eko completion`)
+## 📌 Issue 2: Generate shell completion scripts (`eko completion`)
 
 **Difficulty**: Easy (`good first issue`)  
 **Labels**: `good first issue`, `help wanted`, `enhancement`
@@ -192,7 +58,7 @@ eko completion zsh > ~/.zsh/completion/_eko
 
 ---
 
-## 📌 Issue 8: Add interactive terminal picker for `eko restore` and `eko summary`
+## 📌 Issue 3: Add interactive terminal picker for `eko restore` and `eko summary`
 
 **Difficulty**: Medium (`good first issue`)  
 **Labels**: `good first issue`, `help wanted`, `ux`, `tui`
@@ -217,7 +83,7 @@ $ eko restore
 
 ---
 
-## 📌 Issue 9: Support custom snapshot aliases and tags (`eko tag`)
+## 📌 Issue 4: Support custom snapshot aliases and tags (`eko tag`)
 
 **Difficulty**: Medium (`good first issue`)  
 **Labels**: `good first issue`, `help wanted`, `feature`
@@ -245,7 +111,7 @@ eko restore pre-refactor
 
 ---
 
-## 📌 Issue 10: Slack and Discord Webhook notifications for AI summaries
+## 📌 Issue 5: Slack and Discord Webhook notifications for AI summaries
 
 **Difficulty**: Medium (`good first issue`)  
 **Labels**: `good first issue`, `help wanted`, `feature`, `integrations`
@@ -269,7 +135,7 @@ eko save --ai
 
 ---
 
-## 📌 Issue 11: Add `eko config` command to manage global settings
+## 📌 Issue 6: Add `eko config` command to manage global settings
 
 **Difficulty**: Easy (`good first issue`)  
 **Labels**: `good first issue`, `help wanted`, `enhancement`, `cli`
@@ -298,7 +164,7 @@ eko config list
 
 ---
 
-## 📌 Issue 12: Restore environment variables automatically after `eko restore`
+## 📌 Issue 7: Restore environment variables automatically after `eko restore`
 
 **Difficulty**: Easy (`good first issue`)  
 **Labels**: `good first issue`, `help wanted`, `enhancement`, `ux`
@@ -327,7 +193,7 @@ Restored: 8c9d1a2f
 
 ---
 
-## 📌 Issue 13: Show real-time progress bar during `eko save` and `eko restore`
+## 📌 Issue 8: Show real-time progress bar during `eko save` and `eko restore`
 
 **Difficulty**: Medium (`good first issue`)  
 **Labels**: `good first issue`, `help wanted`, `ux`, `cli`
@@ -350,7 +216,7 @@ Snapshot saved: 8c9d1a2f
 
 ---
 
-## 📌 Issue 14: Add `eko size` command to report snapshot disk usage
+## 📌 Issue 9: Add `eko size` command to report snapshot disk usage
 
 **Difficulty**: Easy (`good first issue`)  
 **Labels**: `good first issue`, `help wanted`, `feature`, `cli`
@@ -378,7 +244,7 @@ Total: 3 snapshots · 122.2 MB
 
 ---
 
-## 📌 Issue 15: Add `eko copy` command to copy a snapshot into a new directory
+## 📌 Issue 10: Add `eko copy` command to copy a snapshot into a new directory
 
 **Difficulty**: Medium (`good first issue`)  
 **Labels**: `good first issue`, `help wanted`, `feature`, `cli`
@@ -403,7 +269,7 @@ eko copy 8c9d1a2f ./my-snapshot-copy --dry-run
 
 ---
 
-## 📌 Issue 16: Add `eko search` command to search file contents across snapshots
+## 📌 Issue 11: Add `eko search` command to search file contents across snapshots
 
 **Difficulty**: Medium (`good first issue`)  
 **Labels**: `good first issue`, `help wanted`, `feature`, `cli`
@@ -432,7 +298,7 @@ eko search "deprecated" --all
 
 ---
 
-## 📌 Issue 17: Add `eko init --from <snapshot-id>` flag to bootstrap a new project from a snapshot
+## 📌 Issue 12: Add `eko init --from <snapshot-id>` flag to bootstrap a new project from a snapshot
 
 **Difficulty**: Easy (`good first issue`)  
 **Labels**: `good first issue`, `help wanted`, `feature`, `cli`
@@ -456,7 +322,7 @@ eko init --from 8c9d1a2f
 
 ---
 
-## 📌 Issue 18: Write a GitHub Actions CI workflow example for projects using Eko
+## 📌 Issue 13: Write a GitHub Actions CI workflow example for projects using Eko
 
 **Difficulty**: Easy (`good first issue`)  
 **Labels**: `good first issue`, `help wanted`, `documentation`, `ci`
