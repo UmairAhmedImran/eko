@@ -29,6 +29,14 @@ import (
 
 const objectsSubdir = "objects"
 
+// bufferPool reuses 32KB byte slices to minimize GC allocations during blob storage.
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		b := make([]byte, 32*1024)
+		return &b
+	},
+}
+
 // Store is a thread-safe content-addressable blob store.
 type Store struct {
 	baseDir string
@@ -55,7 +63,7 @@ func (s *Store) Exists(hash string) bool {
 	return err == nil
 }
 
-// Put compresses and stores data by its SHA-256 hash.
+// Put compresses and stores data by its SHA-256 hash using gzip.BestCompression.
 // If a blob with that hash already exists the call is a no-op (pure dedup).
 // Returns the hex-encoded SHA-256 hash.
 func (s *Store) Put(data []byte) (string, error) {
@@ -86,7 +94,8 @@ func (s *Store) Put(data []byte) (string, error) {
 		return "", fmt.Errorf("objects: create tmp: %w", err)
 	}
 
-	gz, err := gzip.NewWriterLevel(f, gzip.BestSpeed)
+	// Use BestCompression for maximum disk space savings
+	gz, err := gzip.NewWriterLevel(f, gzip.BestCompression)
 	if err != nil {
 		f.Close()
 		os.Remove(tmp)
