@@ -16,9 +16,10 @@ Exhaustive reference guide for all commands, flags, options, and aliases in the 
 | [`eko save`](#2-eko-save) | None | Capture project snapshot in CAS object store | `-m`, `-a/--ai`, `--provider` |
 | [`eko summary`](#3-eko-summary-alias-eko-summarize) | `summarize` | Generate AI-powered change summary | `-j/--json`, `-p/--provider`, `-s/--save` |
 | [`eko history`](#4-eko-history) | None | List snapshot history | `-j/--json`, `-v/--verbose` |
-| [`eko restore`](#5-eko-restore-snapshot-id) | None | Revert project to a past snapshot state | `<snapshot-id>` |
-| [`eko clean`](#6-eko-clean) | None | Remove old snapshots & garbage-collect blobs | `--keep`, `--dry-run` |
-| [`eko migrate`](#7-eko-migrate) | None | Convert legacy snapshots to CAS format | `--dry-run` |
+| [`eko restore`](#5-eko-restore-snapshot-id) | None | Revert project to a past snapshot state | `<snapshot-id>`, `<tag-name>` |
+| [`eko tag`](#6-eko-tag) | None | Assign human-readable tag/alias to a snapshot | `<snapshot-id>`, `<tag-name>` |
+| [`eko clean`](#7-eko-clean) | None | Remove old snapshots & garbage-collect blobs | `--keep`, `--dry-run` |
+| [`eko migrate`](#8-eko-migrate) | None | Convert legacy snapshots to CAS format | `--dry-run` |
 
 ---
 
@@ -176,6 +177,17 @@ eko clean --keep 5 --dry-run
 3. **Inert Dry Run**: `--dry-run` opens the database read-only and rejects writes at the connection level, so it cannot change a single byte.
 4. **Progress on Failure**: Removal is not atomic. If a deletion fails partway, the error reports exactly how many snapshots were removed, and the next run continues from there.
 5. **CAS Garbage Collection**: Automatically purges orphaned blobs from `.eko/objects/` that are no longer referenced by any snapshot manifest.
+
+---
+
+## 6. `eko tag <snapshot-id> <tag-name>`
+
+Assigns a human-readable tag/alias to an 8-character snapshot ID so you can restore or summarize using human names (e.g., `v1.0`, `pre-refactor`).
+
+```bash
+eko tag 8c9d1a2f pre-refactor
+eko restore pre-refactor
+```
 
 ---
 
