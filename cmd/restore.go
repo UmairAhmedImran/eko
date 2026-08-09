@@ -37,6 +37,17 @@ var restoreCmd = &cobra.Command{
 			return err
 		}
 
+		if !restoreYes {
+			confirmed, err := confirmRestore(cmd, id, path)
+			if err != nil {
+				return err
+			}
+			if !confirmed {
+				fmt.Fprintln(cmd.OutOrStdout(), "Restore cancelled. Nothing was deleted.")
+				return nil
+			}
+		}
+
 		err = snapshot.RestoreSnapshot(path)
 		if err != nil {
 			return err
@@ -47,9 +58,9 @@ var restoreCmd = &cobra.Command{
 	},
 }
 
-// confirmRestore lists what restore is about to delete and waits for an explicit
-// "y". Anything else — including a bare Enter — cancels.
-func confirmRestore(cmd *cobra.Command, id string) (bool, error) {
+// confirmRestore lists what restore is about to overwrite or delete and waits
+// for an explicit "y". Anything else — including a bare Enter — cancels.
+func confirmRestore(cmd *cobra.Command, id, path string) (bool, error) {
 	in := cmd.InOrStdin()
 	if f, ok := in.(*os.File); ok {
 		info, statErr := f.Stat()
@@ -61,19 +72,19 @@ func confirmRestore(cmd *cobra.Command, id string) (bool, error) {
 		}
 	}
 
-	toRemove, err := snapshot.PendingRemovals()
+	changes, err := snapshot.PendingRestoreChanges(path)
 	if err != nil {
-		return false, fmt.Errorf("cannot determine what restore would delete: %w", err)
+		return false, fmt.Errorf("cannot determine what restore would change: %w", err)
 	}
 
 	out := cmd.OutOrStdout()
-	if len(toRemove) == 0 {
-		fmt.Fprintf(out, "Restoring snapshot %s. Nothing in the working directory will be deleted.\n", id)
+	if len(changes) == 0 {
+		fmt.Fprintf(out, "Restoring snapshot %s. Nothing in the working directory will be overwritten or deleted.\n", id)
 	} else {
 		fmt.Fprintf(out,
-			"Restoring snapshot %s will permanently delete %s from the working directory:\n",
-			id, pluralEntries(len(toRemove)))
-		for _, name := range toRemove {
+			"Restoring snapshot %s will overwrite or delete %s in the working directory:\n",
+			id, pluralPaths(len(changes)))
+		for _, name := range changes {
 			fmt.Fprintf(out, "  %s\n", name)
 		}
 		fmt.Fprintln(out, "Any changes made since your last save will be lost.")
@@ -89,11 +100,11 @@ func confirmRestore(cmd *cobra.Command, id string) (bool, error) {
 	return answer == "y" || answer == "yes", nil
 }
 
-func pluralEntries(n int) string {
+func pluralPaths(n int) string {
 	if n == 1 {
-		return "1 entry"
+		return "1 path"
 	}
-	return fmt.Sprintf("%d entries", n)
+	return fmt.Sprintf("%d paths", n)
 }
 
 func init() {

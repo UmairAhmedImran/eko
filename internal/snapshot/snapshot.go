@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -91,11 +92,8 @@ func CreateSnapshot(db *sql.DB) (id, path string, err error) {
 	return id, manifestPath, nil
 }
 
-// PendingRemovals returns the top-level entries in the working directory that
-// RestoreSnapshot would delete, in directory order.
-//
-// RestoreSnapshot calls this to build its own delete list, so anything shown to the
-// user from here is exactly what will be removed — the two cannot drift apart.
+// PendingRemovals returns the top-level entries that a legacy snapshot restore
+// would delete, in directory order.
 func PendingRemovals() ([]string, error) {
 	entries, err := os.ReadDir(".")
 	if err != nil {
@@ -111,6 +109,34 @@ func PendingRemovals() ([]string, error) {
 		}
 	}
 	return toRemove, nil
+}
+
+// PendingRestoreChanges returns working-tree paths the selected restore will
+// overwrite or delete. Paths that are unchanged or only created are omitted.
+func PendingRestoreChanges(path string) ([]string, error) {
+	id := manifest.IDFromPath(path)
+	if !manifest.Exists(ekoDir, id) {
+		return PendingRemovals()
+	}
+
+	m, err := manifest.Read(ekoDir, id)
+	if err != nil {
+		return nil, err
+	}
+	existing, err := currentRestoreFiles()
+	if err != nil {
+		return nil, err
+	}
+
+	changes := make([]string, 0)
+	for rel, info := range existing {
+		entry, inTarget := m.Tree[rel]
+		if !inTarget || fileNeedsRestore(rel, info, entry) {
+			changes = append(changes, rel)
+		}
+	}
+	sort.Strings(changes)
+	return changes, nil
 }
 
 // RestoreSnapshot reverts the working directory to the state captured in path.
@@ -155,48 +181,24 @@ func restoreFromManifest(id string) error {
 	}
 
 	// Step 1: Walk current workspace to find files to delete or keep.
-	existingFiles := make(map[string]os.FileInfo)
-	err = filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if util.ShouldIgnore(filepath.Base(path), info.IsDir()) {
-			if info.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
-			rel := filepath.ToSlash(path)
-			existingFiles[rel] = info
-		}
-		return nil
-	})
+	existingFiles, err := currentRestoreFiles()
 	if err != nil {
 		return fmt.Errorf("snapshot: scan workspace: %w", err)
 	}
 
 	// Step 2: Delete files that are NOT in the target snapshot manifest tree.
-	for rel, info := range existingFiles {
+	for rel := range existingFiles {
 		if _, inTarget := m.Tree[rel]; !inTarget {
 			_ = os.Remove(filepath.FromSlash(rel))
 		}
-		_ = info
 	}
 
 	// Step 3: Filter tree to ONLY files that need extraction (missing or modified).
 	filesToExtract := make(map[string]objects.FileEntry)
 	for rel, entry := range m.Tree {
-		dst := filepath.FromSlash(rel)
-		info, exists := os.Stat(dst)
-
-		if exists == nil && info.Size() == entry.Size {
-			// Fast check: verify if content hash matches existing file
-			if data, err := os.ReadFile(dst); err == nil {
-				if hashBytes(data) == entry.Hash {
-					continue // File is IDENTICAL on disk — skip extraction!
-				}
-			}
+		info, exists := existingFiles[rel]
+		if exists && !fileNeedsRestore(rel, info, entry) {
+			continue
 		}
 		filesToExtract[rel] = entry
 	}
@@ -216,6 +218,38 @@ func restoreFromManifest(id string) error {
 	}
 
 	return nil
+}
+
+func currentRestoreFiles() (map[string]os.FileInfo, error) {
+	existingFiles := make(map[string]os.FileInfo)
+	err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if util.ShouldIgnore(filepath.Base(path), info.IsDir()) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+			rel := filepath.ToSlash(path)
+			existingFiles[rel] = info
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return existingFiles, nil
+}
+
+func fileNeedsRestore(rel string, info os.FileInfo, entry objects.FileEntry) bool {
+	if info.Size() != entry.Size {
+		return true
+	}
+	data, err := os.ReadFile(filepath.FromSlash(rel))
+	return err != nil || hashBytes(data) != entry.Hash
 }
 
 // ─── Legacy restore ───────────────────────────────────────────────────────────
@@ -282,8 +316,8 @@ func buildTree(store *objects.Store, hc *cache.HashCache) (map[string]objects.Fi
 
 	// Collect all files first (serial walk for correctness).
 	type fileJob struct {
-		abs string
-		rel string
+		abs  string
+		rel  string
 		info os.FileInfo
 	}
 	var jobs []fileJob

@@ -11,12 +11,14 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
 	"eko/internal/db"
 	"eko/internal/manifest"
 	"eko/internal/objects"
+	"eko/internal/snapshot"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -262,13 +264,16 @@ func withRestoreYes(t *testing.T, v bool) {
 	t.Cleanup(func() { restoreYes = prev })
 }
 
-// seedSnapshot initialises a project, saves one snapshot of hello.txt, then dirties
-// the file. Returns the snapshot id and the directory.
+// seedSnapshot initialises a project, saves one snapshot, then dirties hello.txt.
+// stable.txt remains unchanged so prompt tests can prove non-destructive files are omitted.
 func seedSnapshot(t *testing.T) (string, string) {
 	t.Helper()
 	dir := setupTestDir(t)
 	_ = initCmd.RunE(initCmd, []string{})
 	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("saved"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "stable.txt"), []byte("unchanged"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	_ = saveCmd.RunE(saveCmd, []string{})
@@ -345,23 +350,27 @@ func TestRestoreCommand_confirmedRestores(t *testing.T) {
 	if string(content) != "saved" {
 		t.Errorf("confirming should restore; got %q", string(content))
 	}
-	// The prompt must name what it is about to delete, or it is not informed consent.
+	// The prompt must name what it is about to overwrite, or it is not informed consent.
 	if !strings.Contains(out, "hello.txt") {
-		t.Errorf("prompt should list the entries it will delete, got %q", out)
+		t.Errorf("prompt should list the files it will overwrite or delete, got %q", out)
 	}
 }
 
-// The prompt must list exactly what RestoreSnapshot deletes — no drift.
-func TestRestoreCommand_promptListsExactlyWhatWouldBeDeleted(t *testing.T) {
+// The prompt must list exactly the working-tree paths the CAS restore will
+// overwrite or delete, while omitting unchanged paths.
+func TestRestoreCommand_promptListsExactlyTheDestructiveChanges(t *testing.T) {
 	withRestoreYes(t, false)
 	id, dir := seedSnapshot(t)
 	if err := os.WriteFile(filepath.Join(dir, "extra.txt"), []byte("x"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	pending, err := snapshot.PendingRemovals()
+	pending, err := snapshot.PendingRestoreChanges(filepath.Join(".eko", "manifests", id+".json"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if want := []string{"extra.txt", "hello.txt"}; !slices.Equal(pending, want) {
+		t.Fatalf("pending destructive changes = %v, want %v", pending, want)
 	}
 	out, err := runRestoreWith(t, id, "n\n")
 	if err != nil {
@@ -369,8 +378,11 @@ func TestRestoreCommand_promptListsExactlyWhatWouldBeDeleted(t *testing.T) {
 	}
 	for _, name := range pending {
 		if !strings.Contains(out, name) {
-			t.Errorf("prompt omitted %q, which restore would have deleted; out=%q", name, out)
+			t.Errorf("prompt omitted destructive change %q; out=%q", name, out)
 		}
+	}
+	if strings.Contains(out, "stable.txt") {
+		t.Errorf("prompt listed unchanged stable.txt as destructive; out=%q", out)
 	}
 	for _, line := range strings.Split(out, "\n") {
 		if strings.TrimSpace(line) == ".eko" {
