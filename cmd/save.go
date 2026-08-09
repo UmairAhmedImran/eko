@@ -69,19 +69,12 @@ Each snapshot generates a lightweight manifest file and stores unique file blobs
 			path,
 			summaryText,
 		); err != nil {
-			// The snapshot tree is already on disk at this point, and the row that would
-			// have made it reachable does not exist. Leaving it there strands the bytes:
-			// `eko history` cannot list it, `eko restore <id>` fails with "snapshot not
-			// found", and `eko clean` only walks snapshots recorded in the database, so it
-			// never sees an orphan directory either. Every retry against a still-unwritable
-			// database would add another one (#93).
-			//
-			// Removing it here keeps `save` all-or-nothing without changing the existing
-			// write-then-insert order, so a partially-failed save leaves behind exactly what
-			// it did before this fix: nothing.
+			// CreateSnapshot has already written the manifest, but the failed row
+			// insert leaves no supported way to list or restore it. Remove that
+			// unreachable manifest so retries do not accumulate phantom snapshots.
 			dbErr := fmt.Errorf("failed to save snapshot to db: %w", err)
-			if rmErr := os.RemoveAll(path); rmErr != nil {
-				return errors.Join(dbErr, fmt.Errorf("could not remove orphaned snapshot %s: %w", path, rmErr))
+			if rmErr := os.Remove(path); rmErr != nil {
+				return errors.Join(dbErr, fmt.Errorf("could not remove orphaned snapshot manifest %s: %w", path, rmErr))
 			}
 			return dbErr
 		}

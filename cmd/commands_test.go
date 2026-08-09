@@ -1303,12 +1303,12 @@ func TestCleanCommand_nonAtomicFailureReportsProgress(t *testing.T) {
 	}
 }
 
-// --- #93: a failed insert must not strand the snapshot directory ------------
+// --- #93: a failed insert must not strand a snapshot manifest ---------------
 
-// countSnapshotDirs returns the number of entries under .eko/snapshots.
-func countSnapshotDirs(t *testing.T) int {
+// countSnapshotManifests returns the number of files under .eko/manifests.
+func countSnapshotManifests(t *testing.T) int {
 	t.Helper()
-	entries, err := os.ReadDir(filepath.Join(".eko", "snapshots"))
+	entries, err := os.ReadDir(filepath.Join(".eko", "manifests"))
 	if errors.Is(err, os.ErrNotExist) {
 		return 0
 	}
@@ -1348,7 +1348,7 @@ func breakSnapshotInsert(t *testing.T) {
 	}
 }
 
-func TestSaveCommand_failedInsertLeavesNoOrphanDirectory(t *testing.T) {
+func TestSaveCommand_failedInsertLeavesNoOrphanManifest(t *testing.T) {
 	dir := setupTestDir(t)
 	if err := initCmd.RunE(initCmd, []string{}); err != nil {
 		t.Fatal(err)
@@ -1362,8 +1362,8 @@ func TestSaveCommand_failedInsertLeavesNoOrphanDirectory(t *testing.T) {
 	if err := saveCmd.RunE(saveCmd, []string{}); err != nil {
 		t.Fatal(err)
 	}
-	if got := countSnapshotDirs(t); got != 1 {
-		t.Fatalf("expected 1 snapshot directory after a good save, got %d", got)
+	if got := countSnapshotManifests(t); got != 1 {
+		t.Fatalf("expected 1 snapshot manifest after a good save, got %d", got)
 	}
 
 	breakSnapshotInsert(t)
@@ -1376,17 +1376,17 @@ func TestSaveCommand_failedInsertLeavesNoOrphanDirectory(t *testing.T) {
 		t.Errorf("expected the db error to survive cleanup, got %q", err)
 	}
 
-	// The whole point of #93: the directory the failed save wrote must be gone, not
-	// stranded with no row pointing at it.
-	if got := countSnapshotDirs(t); got != 1 {
-		t.Errorf("expected the failed save to leave no orphan directory (still 1), got %d", got)
+	// The whole point of #93 under the CAS engine: the manifest the failed save
+	// wrote must be gone, not stranded with no row pointing at it.
+	if got := countSnapshotManifests(t); got != 1 {
+		t.Errorf("expected the failed save to leave no orphan manifest (still 1), got %d", got)
 	}
 
 	// And a retry against the same broken database must not accumulate more.
 	if err := saveCmd.RunE(saveCmd, []string{}); err == nil {
 		t.Fatal("expected the retry to fail too")
 	}
-	if got := countSnapshotDirs(t); got != 1 {
-		t.Errorf("every retry adds an orphan: expected 1 directory, got %d", got)
+	if got := countSnapshotManifests(t); got != 1 {
+		t.Errorf("every retry adds an orphan: expected 1 manifest, got %d", got)
 	}
 }

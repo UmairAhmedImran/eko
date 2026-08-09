@@ -1,7 +1,6 @@
 package snapshot
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,51 +112,5 @@ func TestRestoreSnapshot_CAS(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(dir, "newfile.go")); !os.IsNotExist(err) {
 		t.Errorf("expected newfile.go to be removed after restore")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// discardPartial (#93)
-// ---------------------------------------------------------------------------
-
-// A CreateSnapshot that aborts after util.CopyDir has begun would otherwise leave the
-// partial tree under .eko/snapshots/<id>/ with nothing pointing at it: the id and path
-// are never returned, so no caller can reference or remove it, and `eko clean` only walks
-// snapshots recorded in the database.
-func TestDiscardPartial_removesTheDirectoryAndKeepsTheCause(t *testing.T) {
-	setupProject(t)
-
-	base := filepath.Join(".eko", "snapshots", "deadbeef")
-	if err := os.MkdirAll(base, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(base, "partial.txt"), []byte("half a snapshot"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	cause := errors.New("copy failed midway")
-	got := discardPartial(base, cause)
-
-	if !errors.Is(got, cause) {
-		t.Errorf("the abort cause must survive cleanup, got %v", got)
-	}
-	if _, err := os.Stat(base); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("expected %s to be removed, stat error was %v", base, err)
-	}
-}
-
-// Cleanup must not invent a snapshot directory or fail when there is nothing to remove:
-// CreateSnapshot can abort before CopyDir creates anything.
-func TestDiscardPartial_isANoOpWhenNothingWasWritten(t *testing.T) {
-	setupProject(t)
-
-	cause := errors.New("aborted before any write")
-	got := discardPartial(filepath.Join(".eko", "snapshots", "never-created"), cause)
-
-	if !errors.Is(got, cause) {
-		t.Errorf("expected the cause unchanged, got %v", got)
-	}
-	if got.Error() != cause.Error() {
-		t.Errorf("a no-op cleanup must not decorate the error, got %q", got)
 	}
 }
