@@ -1,21 +1,34 @@
-FROM golang:1.26-alpine AS build
+# Build binary with CGO support for SQLite
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 
-COPY go.mod go.sum  ./
-RUN go mod download
-
-COPY . .
-
+# Install C compile toolchain required for sqlite3
 RUN apk add --no-cache gcc musl-dev
 
-RUN CGO_ENABLED=1 GOOS=linux go build -o /eko .
+# Cache Go modules
+COPY go.mod go.sum ./
+RUN go mod download
 
-FROM alpine:latest AS build-release
+# Copy application code
+COPY . .
 
-WORKDIR /
+# Build statically linked CGO binary (linking musl statically)
+RUN CGO_ENABLED=1 GOOS=linux go build \
+    -ldflags="-w -s -extldflags '-static'" \
+    -o /app/eko .
 
-COPY --from=build /eko /eko
+# Distroless Minimal Security Image
+FROM gcr.io/distroless/static-debian12:nonroot
 
-CMD ["/eko"]
+WORKDIR /app
 
+# Copy binary from builder
+COPY --from=builder /app/eko /app/eko
+
+# Run as non-root user (distroless default nonroot UID)
+USER 65532:65532
+
+EXPOSE 8080
+
+ENTRYPOINT ["/app/eko"]
