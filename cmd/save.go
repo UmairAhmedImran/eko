@@ -5,7 +5,9 @@ import (
 	"eko/internal/ai"
 	"eko/internal/db"
 	"eko/internal/snapshot"
+	"errors"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -67,7 +69,14 @@ Each snapshot generates a lightweight manifest file and stores unique file blobs
 			path,
 			summaryText,
 		); err != nil {
-			return fmt.Errorf("failed to save snapshot to db: %w", err)
+			// CreateSnapshot has already written the manifest, but the failed row
+			// insert leaves no supported way to list or restore it. Remove that
+			// unreachable manifest so retries do not accumulate phantom snapshots.
+			dbErr := fmt.Errorf("failed to save snapshot to db: %w", err)
+			if rmErr := os.Remove(path); rmErr != nil {
+				return errors.Join(dbErr, fmt.Errorf("could not remove orphaned snapshot manifest %s: %w", path, rmErr))
+			}
+			return dbErr
 		}
 
 		fmt.Println("Snapshot saved:", id)
