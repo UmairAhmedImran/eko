@@ -56,11 +56,16 @@ func Write(ekoDir string, m *Manifest) error {
 		os.Remove(tmp)
 		return fmt.Errorf("manifest: rename: %w", err)
 	}
+	globalCache.Put(m)
 	return nil
 }
 
 // Read deserialises the manifest for id from ekoDir/manifests/<id>.json.
 func Read(ekoDir, id string) (*Manifest, error) {
+	if cached, ok := globalCache.Get(id); ok {
+		return cached, nil
+	}
+
 	path := filepath.Join(ekoDir, manifestsSubdir, id+".json")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -70,6 +75,7 @@ func Read(ekoDir, id string) (*Manifest, error) {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("manifest: unmarshal %s: %w", id, err)
 	}
+	globalCache.Put(&m)
 	return &m, nil
 }
 
@@ -79,8 +85,9 @@ func Exists(ekoDir, id string) bool {
 	return err == nil
 }
 
-// Delete removes the manifest file for id.
+// Delete removes the manifest file for id and invalidates its cache entry.
 func Delete(ekoDir, id string) error {
+	globalCache.Invalidate(id)
 	return os.Remove(filepath.Join(ekoDir, manifestsSubdir, id+".json"))
 }
 
