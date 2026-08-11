@@ -17,7 +17,7 @@ Eko is composed of three core architectural layers:
 2. **Engine & Utility Layer (`internal/`)**:
    - `snapshot`: Orchestrates snapshot creation, manifest writing, env serialization, and atomic directory restores.
    - `objects`: Content-Addressable Storage (CAS) engine (`.eko/objects/<prefix>/<hash>.gz`), gzip compression, atomic writes, and mark-and-sweep garbage collection.
-   - `manifest`: Lightweight JSON snapshot manifests (`.eko/manifests/<id>.json`).
+   - `manifest`: Lightweight JSON snapshot manifests (`.eko/manifests/<id>.json`) backed by an in-memory thread-safe LRU cache (`internal/manifest/cache.go`, default capacity: 50 manifests) for **~24.26 ns/op** RAM lookups.
    - `cache`: Incremental SQLite hash cache (`hash_cache` table in `db.sqlite`) to skip reading unchanged files.
    - `ai/mind`: **GitMind AI Reasoning Engine** (handles all 20 AI capabilities: status, review, semdiff, risk, impact, bisect, ask, owners, next, security, gate, explain, test, conflict, pr).
    - `util`: Worker-pool directory copy engine and thread-safe error reporting.
