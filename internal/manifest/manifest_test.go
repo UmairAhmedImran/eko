@@ -51,6 +51,25 @@ func TestLRUCache(t *testing.T) {
 	if cache.Len() != 1 {
 		t.Fatalf("expected cache length 1, got %d", cache.Len())
 	}
+
+	// Test Clear
+	cache.Clear()
+	if cache.Len() != 0 {
+		t.Fatalf("expected cache length 0 after Clear, got %d", cache.Len())
+	}
+
+	// Test invalid capacity fallback
+	invalidCache := manifest.NewCache(0)
+	if invalidCache.Len() != 0 {
+		t.Fatalf("expected length 0 for new cache")
+	}
+
+	// Test Put nil / empty ID safety
+	invalidCache.Put(nil)
+	invalidCache.Put(&manifest.Manifest{ID: ""})
+	if invalidCache.Len() != 0 {
+		t.Fatalf("expected length 0 after nil/empty put")
+	}
 }
 
 func TestManifestReadWriteDeleteCache(t *testing.T) {
