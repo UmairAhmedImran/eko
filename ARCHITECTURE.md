@@ -306,9 +306,10 @@ flowchart LR
 
 ### Key Performance Innovations:
 1. **Pre-Compiled SQL Statements (`sql.Stmt`)**: Compiles SQL lookup and store queries once per session, cutting warm save latency to **<1.0 ms**.
-2. **Mutex Serialization (`sync.Mutex`)**: Prevents SQLite lock contention during multi-threaded worker pool operations.
-3. **`sync.Pool` Buffer Reuse**: Reuses 32KB byte read buffers to eliminate Go heap memory allocations and GC pause jitter.
-4. **Maximal Compression (`gzip.BestCompression`)**: Compresses all stored object blobs for maximum disk space savings.
+2. **In-Memory Manifest LRU Cache (`internal/manifest/cache.go`)**: Caches parsed snapshot manifests in a thread-safe LRU cache (capacity: 50 manifests), reducing repeated `manifest.Read()` operations down to **~24.26 ns/op** RAM access.
+3. **Mutex Serialization (`sync.Mutex`)**: Prevents SQLite lock contention during multi-threaded worker pool operations.
+4. **`sync.Pool` Buffer Reuse**: Reuses 32KB byte read buffers to eliminate Go heap memory allocations and GC pause jitter.
+5. **Maximal Compression (`gzip.BestCompression`)**: Compresses all stored object blobs for maximum disk space savings.
 
 ---
 
