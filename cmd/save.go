@@ -16,6 +16,7 @@ var (
 	saveMessage string
 	saveAI      bool
 	saveAIProv  string
+	saveWithEnv bool
 )
 
 var saveCmd = &cobra.Command{
@@ -45,7 +46,11 @@ Each snapshot generates a lightweight manifest file and stores unique file blobs
 		var prevPath string
 		_ = database.QueryRow("SELECT path FROM snapshots ORDER BY created_at DESC, rowid DESC LIMIT 1").Scan(&prevPath)
 
-		id, path, err := snapshot.CreateSnapshot(database)
+		if saveWithEnv {
+			fmt.Println("Warning: Capturing environment variables may store sensitive credentials (API keys, passwords, etc.) in the snapshot.")
+		}
+
+		id, path, err := snapshot.CreateSnapshot(database, saveWithEnv)
 		if err != nil {
 			return err
 		}
@@ -92,5 +97,6 @@ func init() {
 	saveCmd.Flags().StringVarP(&saveMessage, "message", "m", "snapshot", "log message describing the snapshot")
 	saveCmd.Flags().BoolVarP(&saveAI, "ai", "a", false, "auto-generate AI summary of changes")
 	saveCmd.Flags().StringVar(&saveAIProv, "provider", "auto", "AI provider for auto-generated summary (auto, heuristic, openai, gemini)")
+	saveCmd.Flags().BoolVar(&saveWithEnv, "with-env", false, "capture environment variables (WARNING: this may include sensitive credentials)")
 	rootCmd.AddCommand(saveCmd)
 }

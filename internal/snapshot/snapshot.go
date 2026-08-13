@@ -47,7 +47,7 @@ const ekoDir = ".eko"
 // writes a manifest. It accepts the open database so it can use the hash cache.
 //
 // Returns the snapshot ID and the manifest path (stored in db.snapshots.path).
-func CreateSnapshot(db *sql.DB) (id, path string, err error) {
+func CreateSnapshot(db *sql.DB, withEnv bool) (id, path string, err error) {
 	id, err = generateID()
 	if err != nil {
 		return "", "", err
@@ -71,10 +71,14 @@ func CreateSnapshot(db *sql.DB) (id, path string, err error) {
 		return "", "", fmt.Errorf("snapshot: build tree: %w", err)
 	}
 
-	// Capture and store environment variables as a blob.
-	envHash, err := captureEnvVars(store)
-	if err != nil {
-		return "", "", fmt.Errorf("snapshot: capture env: %w", err)
+	// Capture and store environment variables as a blob if requested.
+	var envHash string
+	if withEnv {
+		var err error
+		envHash, err = captureEnvVars(store)
+		if err != nil {
+			return "", "", fmt.Errorf("snapshot: capture env: %w", err)
+		}
 	}
 
 	m := &manifest.Manifest{
@@ -446,7 +450,7 @@ func restoreEnvVars(snapDir string) error {
 }
 
 func writeEnvScript(envMap map[string]string) error {
-	f, err := os.OpenFile(".eko_env_restore.sh", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	f, err := os.OpenFile(".eko_env_restore.sh", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}
