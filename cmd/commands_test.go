@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"eko/internal/api"
 	"eko/internal/db"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -1280,4 +1281,163 @@ func TestCleanCommand_nonAtomicFailureReportsProgress(t *testing.T) {
 	if got := strings.Join(snapshotIDs(t), ","); got != "cccccccc,aaaaaaaa" {
 		t.Errorf("expected only the removed snapshot's row to be gone, got %v", got)
 	}
+}
+
+func TestDiffCommand(t *testing.T) {
+	dir := setupTestDir(t)
+	_ = initCmd.RunE(initCmd, []string{})
+
+	// Create and save first snapshot
+	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("v1"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_ = saveCmd.RunE(saveCmd, []string{})
+
+	database := db.InitDB()
+	var id1 string
+	err := database.QueryRow("SELECT id FROM snapshots ORDER BY rowid DESC LIMIT 1").Scan(&id1)
+	database.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Modify file and add new file
+	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("v2"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "newfile.txt"), []byte("new"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_ = saveCmd.RunE(saveCmd, []string{})
+
+	database = db.InitDB()
+	var id2 string
+	err = database.QueryRow("SELECT id FROM snapshots ORDER BY rowid DESC LIMIT 1").Scan(&id2)
+	database.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test 1: Default summary mode
+	t.Run("default summary", func(t *testing.T) {
+		oldStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		diffJSON = false
+		diffFull = false
+		err := diffCmd.RunE(diffCmd, []string{id1, id2})
+
+		w.Close()
+		os.Stdout = oldStdout
+
+		if err != nil {
+			t.Fatalf("diff command failed: %v", err)
+		}
+
+		var buf bytes.Buffer
+		_, _ = buf.ReadFrom(r)
+		output := buf.String()
+
+		if !strings.Contains(output, "Modified: hello.txt") {
+			t.Errorf("expected output to contain 'Modified: hello.txt', got: %q", output)
+		}
+		if !strings.Contains(output, "Added:    newfile.txt") {
+			t.Errorf("expected output to contain 'Added:    newfile.txt', got: %q", output)
+		}
+	})
+
+	// Test 2: Verbose/Full mode
+	t.Run("verbose full", func(t *testing.T) {
+		oldStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		diffJSON = false
+		diffFull = true
+		err := diffCmd.RunE(diffCmd, []string{id1, id2})
+
+		w.Close()
+		os.Stdout = oldStdout
+
+		if err != nil {
+			t.Fatalf("diff command failed: %v", err)
+		}
+
+		var buf bytes.Buffer
+		_, _ = buf.ReadFrom(r)
+		output := buf.String()
+
+		if !strings.Contains(output, "--- hello.txt (Modified) ---") ||
+			!strings.Contains(output, "--- Original\nv1") ||
+			!strings.Contains(output, "+++ Modified\nv2") {
+			t.Errorf("expected output to contain modified details, got: %q", output)
+		}
+
+		if !strings.Contains(output, "--- newfile.txt (Added) ---") ||
+			!strings.Contains(output, "+++ Content\nnew") {
+			t.Errorf("expected output to contain added details, got: %q", output)
+		}
+	})
+
+	// Test 3: JSON mode
+	t.Run("json mode", func(t *testing.T) {
+		oldStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		diffJSON = true
+		diffFull = false
+		err := diffCmd.RunE(diffCmd, []string{id1, id2})
+
+		w.Close()
+		os.Stdout = oldStdout
+
+		if err != nil {
+			t.Fatalf("diff command failed: %v", err)
+		}
+
+		var buf bytes.Buffer
+		_, _ = buf.ReadFrom(r)
+		output := buf.String()
+
+		var records []api.DiffFile
+		if err := json.Unmarshal(buf.Bytes(), &records); err != nil {
+			t.Fatalf("failed to unmarshal JSON output: %v, output: %s", err, output)
+		}
+
+		foundHello := false
+		foundNewfile := false
+		for _, rec := range records {
+			if rec.Name == "hello.txt" {
+				foundHello = true
+				if rec.Original != "v1" || rec.Modified != "v2" {
+					t.Errorf("unexpected content for hello.txt: %+v", rec)
+				}
+			}
+			if rec.Name == "newfile.txt" {
+				foundNewfile = true
+				if rec.Original != "" || rec.Modified != "new" {
+					t.Errorf("unexpected content for newfile.txt: %+v", rec)
+				}
+			}
+		}
+
+		if !foundHello || !foundNewfile {
+			t.Errorf("missing records in JSON output, got: %s", output)
+		}
+	})
+
+	// Test 4: Unknown snapshot IDs
+	t.Run("unknown ids", func(t *testing.T) {
+		diffJSON = false
+		diffFull = false
+		err := diffCmd.RunE(diffCmd, []string{id1, "unknownid"})
+		if err == nil {
+			t.Error("expected error with unknown snapshot ID")
+		}
+		if !strings.Contains(err.Error(), `snapshot or tag "unknownid" not found`) {
+			t.Errorf("expected not found error message, got: %v", err)
+		}
+	})
 }
