@@ -73,7 +73,7 @@ eko save
 ```
 *Output:* `Snapshot saved: <id>` (where `<id>` is a unique 8-character hexadecimal identifier).
 
-You can also auto-generate an AI change summary when saving:
+You can also auto-generate AI change summaries when saving:
 ```bash
 eko save --ai
 ```
