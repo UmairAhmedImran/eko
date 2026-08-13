@@ -5,7 +5,9 @@ import (
 	"eko/internal/ai"
 	"eko/internal/db"
 	"eko/internal/snapshot"
+	"errors"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -19,11 +21,10 @@ var (
 var saveCmd = &cobra.Command{
 	Use:   "save",
 	Short: "Save project snapshot",
-	Long: `Save creates a new snapshot of the current project state.
+	Long: `Save creates a new snapshot of the current project state into the CAS object store.
 
-A snapshot captures all files in the project directory and stores them
-for later retrieval. Each snapshot is assigned a unique ID that can be
-used with the restore command to revert to this state.`,
+Each snapshot generates a lightweight manifest file and stores unique file blobs in
+.eko/objects/, compressed with gzip and deduplicated across all snapshots.`,
 	Example: `  # Save a snapshot of the current project state
   eko save
 
@@ -44,7 +45,7 @@ used with the restore command to revert to this state.`,
 		var prevPath string
 		_ = database.QueryRow("SELECT path FROM snapshots ORDER BY created_at DESC, rowid DESC LIMIT 1").Scan(&prevPath)
 
-		id, path, err := snapshot.CreateSnapshot()
+		id, path, err := snapshot.CreateSnapshot(database)
 		if err != nil {
 			return err
 		}
@@ -68,7 +69,14 @@ used with the restore command to revert to this state.`,
 			path,
 			summaryText,
 		); err != nil {
-			return fmt.Errorf("failed to save snapshot to db: %w", err)
+			// CreateSnapshot has already written the manifest, but the failed row
+			// insert leaves no supported way to list or restore it. Remove that
+			// unreachable manifest so retries do not accumulate phantom snapshots.
+			dbErr := fmt.Errorf("failed to save snapshot to db: %w", err)
+			if rmErr := os.Remove(path); rmErr != nil {
+				return errors.Join(dbErr, fmt.Errorf("could not remove orphaned snapshot manifest %s: %w", path, rmErr))
+			}
+			return dbErr
 		}
 
 		fmt.Println("Snapshot saved:", id)

@@ -13,11 +13,24 @@ Exhaustive reference guide for all commands, flags, options, and aliases in the 
 | Command | Aliases | Description | Key Flags |
 | ------- | ------- | ----------- | --------- |
 | [`eko init`](#1-eko-init) | None | Initialize Eko project & SQLite database | None |
-| [`eko save`](#2-eko-save) | None | Capture project snapshot | `-m`, `-a/--ai`, `--provider` |
+| [`eko save`](#2-eko-save) | None | Capture project snapshot in CAS object store | `-m`, `-a/--ai`, `--provider` |
 | [`eko summary`](#3-eko-summary-alias-eko-summarize) | `summarize` | Generate AI-powered change summary | `-j/--json`, `-p/--provider`, `-s/--save` |
 | [`eko history`](#4-eko-history) | None | List snapshot history | `-j/--json`, `-v/--verbose` |
-| [`eko restore`](#5-eko-restore-snapshot-id) | None | Revert project to a past snapshot state | `<snapshot-id>` |
-| [`eko clean`](#6-eko-clean) | None | Remove old snapshots and free disk space | `--keep`, `--dry-run` |
+| [`eko restore`](#5-eko-restore-snapshot-id) | None | Revert project to a past snapshot state | `<snapshot-id>`, `<tag-name>` |
+| [`eko tag`](#6-eko-tag) | None | Assign human-readable tag/alias to a snapshot | `<snapshot-id>`, `<tag-name>` |
+| [`eko clean`](#7-eko-clean) | None | Remove old snapshots & garbage-collect blobs | `--keep`, `--dry-run` |
+| [`eko migrate`](#8-eko-migrate) | None | Convert legacy snapshots to CAS format | `--dry-run` |
+| [`eko ai status`](#9-eko-ai-status) | None | Intent-based workspace status & file role analysis | None |
+| [`eko ai review`](#10-eko-ai-review) | None | Automated code review & commit risk scoring | None |
+| [`eko ai semdiff`](#11-eko-ai-semdiff) | None | Behavioral semantic diff analysis | None |
+| [`eko ai risk`](#12-eko-ai-risk) | None | Multi-dimensional commit risk evaluation | None |
+| [`eko ai impact`](#13-eko-ai-impact) | None | Subsystem change impact & test suite match | None |
+| [`eko ai bisect`](#14-eko-ai-bisect) | None | Automated AI regression bug isolation | `[failing-test]` |
+| [`eko ai ask`](#15-eko-ai-ask) | None | Query repository architecture memory | `<query>` |
+| [`eko ai owners`](#16-eko-ai-owners) | None | Identify code maintainers & PR reviewers | `<file-path>` |
+| [`eko ai next`](#17-eko-ai-next) | None | AI task & issue recommendation engine | None |
+| [`eko ai security`](#18-eko-ai-security) | None | AI hardcoded secret & vulnerability scanner | None |
+| [`eko ai gate`](#19-eko-ai-gate) | None | AI pre-commit quality gate evaluation | None |
 
 ---
 
@@ -138,10 +151,12 @@ Reverts the working directory to the exact state captured in snapshot `<snapshot
 eko restore 3b7f2a1e
 ```
 
-**Restoration Engine Details**:
-1. **Parallel Delete Phase**: Removes top-level workspace files concurrently using goroutines and lock-free Compare-And-Swap (CAS) error handling.
-2. **Parallel Copy Phase**: Re-populates workspace files from `.eko/snapshots/<id>/`.
-3. **Environment Restoration**: Generates `.eko_env_restore.sh` to restore captured environment variables.
+**Restoration Engine Details (Differential Smart Restore)**:
+1. **Workspace Diff Scan**: Walks workspace and target manifest tree (`.eko/manifests/<id>.json`).
+2. **Selective Removal**: Deletes only files that do NOT exist in the target snapshot.
+3. **Identical File Skip**: Compares size & SHA-256 hashes — skips re-decompressing files that are already identical on disk (90%+ I/O reduction).
+4. **Parallel Worker Pool**: Decompresses and extracts only missing/modified blobs from `.eko/objects/` in parallel (~27.6 ms for 1,000 files).
+5. **Environment Restoration**: Generates `.eko_env_restore.sh` to restore captured environment variables.
 
 ---
 
@@ -172,6 +187,101 @@ eko clean --keep 5 --dry-run
 2. **Path Confinement**: A recorded path is only accepted when it resolves, through symlinks, to a direct child of `.eko/snapshots` whose directory name matches the snapshot ID.
 3. **Inert Dry Run**: `--dry-run` opens the database read-only and rejects writes at the connection level, so it cannot change a single byte.
 4. **Progress on Failure**: Removal is not atomic. If a deletion fails partway, the error reports exactly how many snapshots were removed, and the next run continues from there.
+5. **CAS Garbage Collection**: Automatically purges orphaned blobs from `.eko/objects/` that are no longer referenced by any snapshot manifest.
+
+---
+
+## 6. `eko tag <snapshot-id> <tag-name>`
+
+Assigns a human-readable tag/alias to an 8-character snapshot ID so you can restore or summarize using human names (e.g., `v1.0`, `pre-refactor`).
+
+```bash
+eko tag 8c9d1a2f pre-refactor
+eko restore pre-refactor
+```
+
+---
+
+## 7. `eko migrate`
+
+Converts legacy full-directory snapshots (`.eko/snapshots/<id>/`) to the high-efficiency Content-Addressable Storage (CAS) object store and JSON manifest format (`.eko/manifests/<id>.json`).
+
+```bash
+# Preview what snapshots will be converted
+eko migrate --dry-run
+
+# Run migration
+eko migrate
+```
+
+### Flags
+
+| Flag | Short | Type | Default | Description |
+| ---- | ----- | ---- | ------- | ----------- |
+| `--dry-run` | | Bool | `false` | Inspect legacy snapshots eligible for migration without modifying files |
+
+---
+
+## 9. `eko ai` — GitMind AI Intelligence Suite
+
+The `eko ai` command suite turns Eko into an architecture-aware AI developer agent.
+
+```bash
+# Intent-based status analysis & file role classification
+eko ai status
+
+# Automated AI code review & commit risk score (0-100)
+eko ai review
+
+# Behavioral semantic diff analysis (diffs behavior, not lines)
+eko ai semdiff
+
+# Output:
+# Behavioral change:
+# Before: Deletion logic executed only when Project = Ready.
+# After: Deletion logic executes when Project = Active.
+# Potential impact: Projects transitioning between Active and Ready may now follow a different lifecycle path.
+
+# Multi-dimensional commit risk analysis
+eko ai risk
+
+# Output:
+# Commit Risk Analysis
+# Overall: HIGH
+# ┌──────────────────────┬────────┐
+# │ Area                 │ Risk   │
+# ├──────────────────────┼────────┤
+# │ Database             │ HIGH   │
+# │ Authentication       │ LOW    │
+# │ API                  │ MEDIUM │
+# │ Tests                │ HIGH   │
+# │ Configuration        │ LOW    │
+# └──────────────────────┴────────┘
+# Reasons:
+# ⚠ Database schema changed
+# ⚠ Migration has no rollback
+
+# Subsystem change impact graph
+eko ai impact
+
+# Automated regression bug isolation
+eko ai bisect "go test ./..."
+
+# Query repository architecture memory
+eko ai ask "Why do we use CAS storage?"
+
+# Code ownership & reviewer match
+eko ai owners internal/snapshot/snapshot.go
+
+# Task & issue recommendation engine
+eko ai next
+
+# AI hardcoded secret & vulnerability scanner
+eko ai security
+
+# AI pre-commit quality gate evaluation
+eko ai gate
+```
 
 ---
 
