@@ -9,6 +9,7 @@ Get up and running with Eko in minutes.
 ## Prerequisites
 
 - **Go**: Version 1.21+ (if building from source)
+- **Linux Keychain Packages (Linux only)**: `libsecret-1-dev` and `pkg-config` (required for secure credential keyring integration)
 
 ## Installation
 
@@ -53,7 +54,16 @@ eko summary
 eko history
 ```
 
-### 5. Restore a Snapshot State
+### 5. Compare Snapshots
+```bash
+# View list of modified files between two snapshots
+eko diff <snapshot-id-1> <snapshot-id-2>
+
+# View full file code modifications (verbose mode)
+eko diff <snapshot-id-1> <snapshot-id-2> -v
+```
+
+### 6. Restore a Snapshot State
 ```bash
 eko restore <snapshot-id>
 ```
