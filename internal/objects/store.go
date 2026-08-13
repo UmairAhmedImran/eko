@@ -18,6 +18,7 @@ package objects
 import (
 	"compress/gzip"
 	"crypto/sha256"
+	"eko/internal/util"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -257,7 +258,20 @@ func (s *Store) Get(hash string) ([]byte, error) {
 }
 
 // ExtractTo writes the decompressed content of hash to dstPath with the given mode.
-func (s *Store) ExtractTo(hash, dstPath string, mode os.FileMode) error {
+func (s *Store) ExtractTo(hash string, dstPath string, mode os.FileMode) error {
+	prefix := filepath.Join(s.baseDir, hash[:2], hash[2:])
+
+	// If the file is stored as a raw uncompressed file (.raw), we can use reflink/zero-copy copy!
+	rawPath := prefix + ".raw"
+	if _, err := os.Stat(rawPath); err == nil {
+		err := util.CopyOrCloneFile(rawPath, dstPath)
+		if err != nil {
+			return err
+		}
+		return os.Chmod(dstPath, mode.Perm())
+	}
+
+	// Otherwise, fallback to reading and decompressing normally
 	data, err := s.Get(hash)
 	if err != nil {
 		return err
