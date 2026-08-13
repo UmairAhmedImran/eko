@@ -24,7 +24,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 const objectsSubdir = "objects"
@@ -54,19 +57,36 @@ func New(ekoDir string) (*Store, error) {
 
 // objectPath returns the on-disk path for a given SHA-256 hex hash.
 func (s *Store) objectPath(hash string) string {
-	return filepath.Join(s.baseDir, hash[:2], hash[2:]+".gz")
+	// Compatibility check: check if .zst or .raw exists, otherwise default to .gz
+	prefix := filepath.Join(s.baseDir, hash[:2], hash[2:])
+	for _, ext := range []string{".zst", ".raw"} {
+		path := prefix + ext
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return prefix + ".gz"
 }
 
 // Exists reports whether a blob with this hash is already stored.
 func (s *Store) Exists(hash string) bool {
-	_, err := os.Stat(s.objectPath(hash))
-	return err == nil
+	prefix := filepath.Join(s.baseDir, hash[:2], hash[2:])
+	for _, ext := range []string{".zst", ".raw", ".gz"} {
+		if _, err := os.Stat(prefix + ext); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
-// Put compresses and stores data by its SHA-256 hash using gzip.BestCompression.
+// Put compresses and stores data by its SHA-256 hash using zstd.
 // If a blob with that hash already exists the call is a no-op (pure dedup).
 // Returns the hex-encoded SHA-256 hash.
 func (s *Store) Put(data []byte) (string, error) {
+	return s.putWithCompression(data, shouldCompress(data))
+}
+
+func (s *Store) putWithCompression(data []byte, compress bool) (string, error) {
 	hash := hashBytes(data)
 
 	// Fast path: already stored — dedup hit, no I/O needed.
@@ -77,12 +97,17 @@ func (s *Store) Put(data []byte) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Double-check after acquiring lock (another goroutine may have stored it).
+	// Double-check after acquiring lock.
 	if s.Exists(hash) {
 		return hash, nil
 	}
 
-	path := s.objectPath(hash)
+	ext := ".raw"
+	if compress {
+		ext = ".zst"
+	}
+
+	path := filepath.Join(s.baseDir, hash[:2], hash[2:]+ext)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return "", fmt.Errorf("objects: mkdir prefix: %w", err)
 	}
@@ -94,24 +119,37 @@ func (s *Store) Put(data []byte) (string, error) {
 		return "", fmt.Errorf("objects: create tmp: %w", err)
 	}
 
-	// Use BestCompression for maximum disk space savings
-	gz, err := gzip.NewWriterLevel(f, gzip.BestCompression)
-	if err != nil {
-		f.Close()
-		os.Remove(tmp)
-		return "", err
+	if compress {
+		var opts []zstd.EOption
+		if len(data) < 1024*1024 {
+			// Single-threaded encoding for files under 1MB to minimize overhead
+			opts = append(opts, zstd.WithEncoderConcurrency(1))
+		}
+		encoder, err := zstd.NewWriter(f, opts...)
+		if err != nil {
+			f.Close()
+			os.Remove(tmp)
+			return "", err
+		}
+		if _, err := encoder.Write(data); err != nil {
+			encoder.Close()
+			f.Close()
+			os.Remove(tmp)
+			return "", fmt.Errorf("objects: compress: %w", err)
+		}
+		if err := encoder.Close(); err != nil {
+			f.Close()
+			os.Remove(tmp)
+			return "", err
+		}
+	} else {
+		if _, err := f.Write(data); err != nil {
+			f.Close()
+			os.Remove(tmp)
+			return "", fmt.Errorf("objects: write raw: %w", err)
+		}
 	}
-	if _, err := gz.Write(data); err != nil {
-		gz.Close()
-		f.Close()
-		os.Remove(tmp)
-		return "", fmt.Errorf("objects: compress: %w", err)
-	}
-	if err := gz.Close(); err != nil {
-		f.Close()
-		os.Remove(tmp)
-		return "", err
-	}
+
 	if err := f.Close(); err != nil {
 		os.Remove(tmp)
 		return "", err
@@ -122,7 +160,7 @@ func (s *Store) Put(data []byte) (string, error) {
 		return "", fmt.Errorf("objects: rename: %w", err)
 	}
 
-	// Make the blob immutable so it can never be accidentally overwritten.
+	// Make the blob immutable.
 	_ = os.Chmod(path, 0444)
 	return hash, nil
 }
@@ -137,28 +175,85 @@ func (s *Store) PutFile(filePath, cachedHash string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("objects: read %s: %w", filePath, err)
 	}
-	return s.Put(data)
+	compress := shouldCompress(data) && !hasCompressedExtension(filePath)
+	return s.putWithCompression(data, compress)
+}
+
+func shouldCompress(data []byte) bool {
+	if len(data) < 1024 {
+		return false // skip compressing very small files
+	}
+	if len(data) >= 4 {
+		// Gzip
+		if data[0] == 0x1f && data[1] == 0x8b {
+			return false
+		}
+		// Zip
+		if data[0] == 0x50 && data[1] == 0x4b && data[2] == 0x03 && data[3] == 0x04 {
+			return false
+		}
+		// PNG
+		if data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4e && data[3] == 0x47 {
+			return false
+		}
+		// PDF
+		if data[0] == 0x25 && data[1] == 0x50 && data[2] == 0x44 && data[3] == 0x46 {
+			return false
+		}
+		// JPEG
+		if data[0] == 0xff && data[1] == 0xd8 && data[2] == 0xff {
+			return false
+		}
+		// Zstd
+		if data[0] == 0x28 && data[1] == 0xb5 && data[2] == 0x2f && data[3] == 0xfd {
+			return false
+		}
+	}
+	return true
+}
+
+func hasCompressedExtension(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".zip", ".tar", ".gz", ".zst", ".tgz", ".png", ".jpg", ".jpeg", ".gif", ".pdf", ".mp4", ".mp3", ".dmg", ".exe", ".dll", ".so", ".dylib", ".rar", ".7z":
+		return true
+	}
+	return false
 }
 
 // Get decompresses and returns the raw bytes for a stored hash.
 func (s *Store) Get(hash string) ([]byte, error) {
-	f, err := os.Open(s.objectPath(hash))
-	if err != nil {
-		return nil, fmt.Errorf("objects: open %s: %w", hash[:8], err)
-	}
-	defer f.Close()
+	prefix := filepath.Join(s.baseDir, hash[:2], hash[2:])
 
-	gz, err := gzip.NewReader(f)
-	if err != nil {
-		return nil, fmt.Errorf("objects: gzip open %s: %w", hash[:8], err)
+	// 1. Try Zstd
+	if f, err := os.Open(prefix + ".zst"); err == nil {
+		defer f.Close()
+		decoder, err := zstd.NewReader(f)
+		if err != nil {
+			return nil, fmt.Errorf("objects: zstd open %s: %w", hash[:8], err)
+		}
+		defer decoder.Close()
+		return io.ReadAll(decoder)
 	}
-	defer gz.Close()
 
-	data, err := io.ReadAll(gz)
-	if err != nil {
-		return nil, fmt.Errorf("objects: decompress %s: %w", hash[:8], err)
+	// 2. Try Raw (uncompressed)
+	if f, err := os.Open(prefix + ".raw"); err == nil {
+		defer f.Close()
+		return io.ReadAll(f)
 	}
-	return data, nil
+
+	// 3. Try Gzip (legacy fallback)
+	if f, err := os.Open(prefix + ".gz"); err == nil {
+		defer f.Close()
+		gz, err := gzip.NewReader(f)
+		if err != nil {
+			return nil, fmt.Errorf("objects: gzip open %s: %w", hash[:8], err)
+		}
+		defer gz.Close()
+		return io.ReadAll(gz)
+	}
+
+	return nil, fmt.Errorf("objects: open %s: file not found", hash[:8])
 }
 
 // ExtractTo writes the decompressed content of hash to dstPath with the given mode.
@@ -218,10 +313,11 @@ func (s *Store) AllHashes() ([]string, error) {
 		if err != nil || info.IsDir() {
 			return err
 		}
-		// filename = <62-char-suffix>.gz → full hash = prefix dir + suffix
 		dir := filepath.Base(filepath.Dir(path))
 		name := info.Name()
-		if len(name) > 3 && name[len(name)-3:] == ".gz" {
+		if len(name) > 4 && (name[len(name)-4:] == ".zst" || name[len(name)-4:] == ".raw") {
+			hashes = append(hashes, dir+name[:len(name)-4])
+		} else if len(name) > 3 && name[len(name)-3:] == ".gz" {
 			hashes = append(hashes, dir+name[:len(name)-3])
 		}
 		return nil
