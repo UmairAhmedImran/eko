@@ -13,24 +13,25 @@ Exhaustive reference guide for all commands, flags, options, and aliases in the 
 | Command | Aliases | Description | Key Flags |
 | ------- | ------- | ----------- | --------- |
 | [`eko init`](#1-eko-init) | None | Initialize Eko project & SQLite database | None |
-| [`eko save`](#2-eko-save) | None | Capture project snapshot in CAS object store | `-m`, `-a/--ai`, `--provider` |
+| [`eko save`](#2-eko-save) | None | Capture project snapshot in CAS object store | `-m`, `-a/--ai`, `--provider`, `--with-env` |
 | [`eko summary`](#3-eko-summary-alias-eko-summarize) | `summarize` | Generate AI-powered change summary | `-j/--json`, `-p/--provider`, `-s/--save` |
 | [`eko history`](#4-eko-history) | None | List snapshot history | `-j/--json`, `-v/--verbose` |
 | [`eko restore`](#5-eko-restore-snapshot-id) | None | Revert project to a past snapshot state | `<snapshot-id>`, `<tag-name>` |
-| [`eko tag`](#6-eko-tag) | None | Assign human-readable tag/alias to a snapshot | `<snapshot-id>`, `<tag-name>` |
-| [`eko clean`](#7-eko-clean) | None | Remove old snapshots & garbage-collect blobs | `--keep`, `--dry-run` |
-| [`eko migrate`](#8-eko-migrate) | None | Convert legacy snapshots to CAS format | `--dry-run` |
-| [`eko ai status`](#9-eko-ai-status) | None | Intent-based workspace status & file role analysis | None |
+| [`eko diff`](#6-eko-diff-snapshot-id-1-snapshot-id-2) | None | Compare two snapshots | `-v/--full`, `--json` |
+| [`eko tag`](#7-eko-tag-snapshot-id-tag-name) | None | Assign human-readable tag/alias to a snapshot | `<snapshot-id>`, `<tag-name>` |
+| [`eko clean`](#8-eko-clean) | None | Remove old snapshots & garbage-collect blobs | `--keep`, `--dry-run` |
+| [`eko migrate`](#9-eko-migrate) | None | Convert legacy snapshots to CAS format | `--dry-run` |
+| [`eko ai status`](#10-eko-ai-status) | None | Intent-based workspace status & file role analysis | None |
 | [`eko ai review`](#10-eko-ai-review) | None | Automated code review & commit risk scoring | None |
-| [`eko ai semdiff`](#11-eko-ai-semdiff) | None | Behavioral semantic diff analysis | None |
-| [`eko ai risk`](#12-eko-ai-risk) | None | Multi-dimensional commit risk evaluation | None |
-| [`eko ai impact`](#13-eko-ai-impact) | None | Subsystem change impact & test suite match | None |
-| [`eko ai bisect`](#14-eko-ai-bisect) | None | Automated AI regression bug isolation | `[failing-test]` |
-| [`eko ai ask`](#15-eko-ai-ask) | None | Query repository architecture memory | `<query>` |
-| [`eko ai owners`](#16-eko-ai-owners) | None | Identify code maintainers & PR reviewers | `<file-path>` |
-| [`eko ai next`](#17-eko-ai-next) | None | AI task & issue recommendation engine | None |
-| [`eko ai security`](#18-eko-ai-security) | None | AI hardcoded secret & vulnerability scanner | None |
-| [`eko ai gate`](#19-eko-ai-gate) | None | AI pre-commit quality gate evaluation | None |
+| [`eko ai semdiff`](#10-eko-ai-semdiff) | None | Behavioral semantic diff analysis | None |
+| [`eko ai risk`](#10-eko-ai-risk) | None | Multi-dimensional commit risk evaluation | None |
+| [`eko ai impact`](#10-eko-ai-impact) | None | Subsystem change impact & test suite match | None |
+| [`eko ai bisect`](#10-eko-ai-bisect) | None | Automated AI regression bug isolation | `[failing-test]` |
+| [`eko ai ask`](#10-eko-ai-ask) | None | Query repository architecture memory | `<query>` |
+| [`eko ai owners`](#10-eko-ai-owners) | None | Identify code maintainers & PR reviewers | `<file-path>` |
+| [`eko ai next`](#10-eko-ai-next) | None | AI task & issue recommendation engine | None |
+| [`eko ai security`](#10-eko-ai-security) | None | AI hardcoded secret & vulnerability scanner | None |
+| [`eko ai gate`](#10-eko-ai-gate) | None | AI pre-commit quality gate evaluation | None |
 
 ---
 
@@ -64,6 +65,9 @@ eko save --ai
 
 # Auto-generate AI summary using a specific AI provider
 eko save --ai --provider gemini
+
+# Capture snapshot with process environment variables (WARNING: captures potential credentials)
+eko save --with-env
 ```
 
 ### Flags
@@ -73,6 +77,7 @@ eko save --ai --provider gemini
 | `--message` | `-m` | String | `"snapshot"` | Log message describing the snapshot |
 | `--ai` | `-a` | Bool | `false` | Auto-generate AI change summary using LLM/heuristic provider |
 | `--provider` | | String | `"auto"` | AI provider for auto-summary (`auto`, `heuristic`, `openai`, `gemini`) |
+| `--with-env` | | Bool | `false` | Capture process environment variables (WARNING: may include sensitive credentials) |
 
 ---
 
@@ -156,11 +161,46 @@ eko restore 3b7f2a1e
 2. **Selective Removal**: Deletes only files that do NOT exist in the target snapshot.
 3. **Identical File Skip**: Compares size & SHA-256 hashes — skips re-decompressing files that are already identical on disk (90%+ I/O reduction).
 4. **Parallel Worker Pool**: Decompresses and extracts only missing/modified blobs from `.eko/objects/` in parallel (~27.6 ms for 1,000 files).
-5. **Environment Restoration**: Generates `.eko_env_restore.sh` to restore captured environment variables.
+5. **Environment Restoration**: Generates a secure `.eko_env_restore.sh` script (with `0600` permissions) to restore captured environment variables.
 
 ---
 
-## 6. `eko clean`
+## 6. `eko diff <snapshot-id-1> <snapshot-id-2>`
+
+Compares the file tree and contents of two snapshots and displays the differences.
+
+```bash
+# Compare two snapshots (summary view)
+eko diff 3b7f2a1e 8c9d1a2f
+
+# Show full before/after content of the changes (verbose mode)
+eko diff 3b7f2a1e 8c9d1a2f -v
+
+# Output diff in machine-readable JSON format
+eko diff 3b7f2a1e 8c9d1a2f --json
+```
+
+### Flags
+
+| Flag | Short | Type | Default | Description |
+| ---- | ----- | ---- | ------- | ----------- |
+| `--full` | `-v` | Bool | `false` | Show full before/after content of the changed files |
+| `--json` | | Bool | `false` | Output diff array in machine-readable JSON format |
+
+---
+
+## 7. `eko tag <snapshot-id> <tag-name>`
+
+Assigns a human-readable tag/alias to an 8-character snapshot ID so you can restore or summarize using human names (e.g., `v1.0`, `pre-refactor`).
+
+```bash
+eko tag 8c9d1a2f pre-refactor
+eko restore pre-refactor
+```
+
+---
+
+## 8. `eko clean`
 
 Removes old snapshots from `.eko/snapshots` and from the database, freeing the disk space they use. Snapshots are ordered newest first; the newest `--keep` are retained and every older one is removed.
 
@@ -191,18 +231,7 @@ eko clean --keep 5 --dry-run
 
 ---
 
-## 6. `eko tag <snapshot-id> <tag-name>`
-
-Assigns a human-readable tag/alias to an 8-character snapshot ID so you can restore or summarize using human names (e.g., `v1.0`, `pre-refactor`).
-
-```bash
-eko tag 8c9d1a2f pre-refactor
-eko restore pre-refactor
-```
-
----
-
-## 7. `eko migrate`
+## 9. `eko migrate`
 
 Converts legacy full-directory snapshots (`.eko/snapshots/<id>/`) to the high-efficiency Content-Addressable Storage (CAS) object store and JSON manifest format (`.eko/manifests/<id>.json`).
 
@@ -222,7 +251,7 @@ eko migrate
 
 ---
 
-## 9. `eko ai` — GitMind AI Intelligence Suite
+## 10. `eko ai` — GitMind AI Intelligence Suite
 
 The `eko ai` command suite turns Eko into an architecture-aware AI developer agent.
 
