@@ -89,7 +89,7 @@ go build -o eko main.go
 # Initialize Eko in any directory
 eko init
 
-# Save a instant local snapshot (with optional AI summary)
+# Save an instant local snapshot (with optional AI summary)
 eko save -m "Refactored payment gateway handler" --ai
 
 # Assign a human-readable tag/alias
