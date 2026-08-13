@@ -531,6 +531,79 @@ func TestSaveCommand_customMessage(t *testing.T) {
 	}
 }
 
+func TestSaveCommand_withEnv(t *testing.T) {
+	dir := setupTestDir(t)
+	_ = initCmd.RunE(initCmd, []string{})
+
+	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set with-env flag and a custom environment variable
+	t.Setenv("TEST_CLI_ENV_VAR", "cli_test_val")
+	saveWithEnv = true
+	defer func() { saveWithEnv = false }() // reset to default
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := saveCmd.RunE(saveCmd, []string{})
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("saveCmd withEnv failed: %v", err)
+	}
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	if !strings.Contains(output, "Warning: Capturing environment variables may store sensitive credentials") {
+		t.Errorf("expected output to contain environment warning, got: %q", output)
+	}
+
+	// Verify database record has been saved
+	database := db.InitDB()
+	var id string
+	err = database.QueryRow("SELECT id FROM snapshots LIMIT 1").Scan(&id)
+	database.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run restore
+	withRestoreYes(t, true)
+	if err := restoreCmd.RunE(restoreCmd, []string{id}); err != nil {
+		t.Fatalf("restoreCmd failed: %v", err)
+	}
+
+	// Verify .eko_env_restore.sh is created
+	restoreScriptPath := filepath.Join(dir, ".eko_env_restore.sh")
+	info, err := os.Stat(restoreScriptPath)
+	if err != nil {
+		t.Fatalf(".eko_env_restore.sh was not created: %v", err)
+	}
+
+	// Check permissions on Unix/macOS
+	if runtime.GOOS != "windows" {
+		if perm := info.Mode().Perm(); perm != 0600 {
+			t.Errorf("expected file permissions 0600, got %o", perm)
+		}
+	}
+
+	// Check content
+	content, err := os.ReadFile(restoreScriptPath)
+	if err != nil {
+		t.Fatalf("failed to read .eko_env_restore.sh: %v", err)
+	}
+	if !strings.Contains(string(content), "export TEST_CLI_ENV_VAR='cli_test_val'") {
+		t.Errorf("expected env restore script to contain TEST_CLI_ENV_VAR, got:\n%s", string(content))
+	}
+}
+
 // --- history test helpers ---
 
 // newLegacyProject creates .eko/snapshots and a database using the pre-summary

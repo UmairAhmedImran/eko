@@ -3,6 +3,7 @@ package snapshot
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -59,7 +60,7 @@ func TestCreateSnapshot_CAS(t *testing.T) {
 	database := db.InitDB()
 	defer database.Close()
 
-	id, path, err := CreateSnapshot(database)
+	id, path, err := CreateSnapshot(database, false)
 	if err != nil {
 		t.Fatalf("CreateSnapshot failed: %v", err)
 	}
@@ -87,7 +88,7 @@ func TestRestoreSnapshot_CAS(t *testing.T) {
 	database := db.InitDB()
 	defer database.Close()
 
-	_, path, err := CreateSnapshot(database)
+	_, path, err := CreateSnapshot(database, false)
 	if err != nil {
 		t.Fatalf("CreateSnapshot failed: %v", err)
 	}
@@ -112,5 +113,74 @@ func TestRestoreSnapshot_CAS(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(dir, "newfile.go")); !os.IsNotExist(err) {
 		t.Errorf("expected newfile.go to be removed after restore")
+	}
+}
+
+func TestCreateSnapshot_EnvOptIn(t *testing.T) {
+	dir := setupProject(t)
+	database := db.InitDB()
+	defer database.Close()
+
+	// Set a custom environment variable
+	t.Setenv("TEST_EKO_ENV_VAR", "eko_test_val")
+
+	// 1. Save WITHOUT env (default)
+	idNoEnv, pathNoEnv, err := CreateSnapshot(database, false)
+	if err != nil {
+		t.Fatalf("CreateSnapshot failed: %v", err)
+	}
+	mNoEnv, err := manifest.Read(".eko", idNoEnv)
+	if err != nil {
+		t.Fatalf("failed to read manifest: %v", err)
+	}
+	if mNoEnv.EnvHash != "" {
+		t.Errorf("expected empty EnvHash when calling CreateSnapshot without env capture")
+	}
+
+	// Verify restore does NOT create .eko_env_restore.sh
+	if err := RestoreSnapshot(pathNoEnv); err != nil {
+		t.Fatalf("RestoreSnapshot failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".eko_env_restore.sh")); !os.IsNotExist(err) {
+		t.Errorf("expected .eko_env_restore.sh not to be created when env capture is disabled")
+	}
+
+	// 2. Save WITH env
+	idWithEnv, pathWithEnv, err := CreateSnapshot(database, true)
+	if err != nil {
+		t.Fatalf("CreateSnapshot failed: %v", err)
+	}
+	mWithEnv, err := manifest.Read(".eko", idWithEnv)
+	if err != nil {
+		t.Fatalf("failed to read manifest: %v", err)
+	}
+	if mWithEnv.EnvHash == "" {
+		t.Errorf("expected non-empty EnvHash when calling CreateSnapshot with env capture")
+	}
+
+	// Verify restore DOES create .eko_env_restore.sh with 0600 permissions
+	if err := RestoreSnapshot(pathWithEnv); err != nil {
+		t.Fatalf("RestoreSnapshot failed: %v", err)
+	}
+	restoreScriptPath := filepath.Join(dir, ".eko_env_restore.sh")
+	info, err := os.Stat(restoreScriptPath)
+	if err != nil {
+		t.Fatalf(".eko_env_restore.sh was not created: %v", err)
+	}
+
+	// Check permissions on Unix/macOS
+	if runtime.GOOS != "windows" {
+		if perm := info.Mode().Perm(); perm != 0600 {
+			t.Errorf("expected file permissions 0600, got %o", perm)
+		}
+	}
+
+	// Check content
+	content, err := os.ReadFile(restoreScriptPath)
+	if err != nil {
+		t.Fatalf("failed to read .eko_env_restore.sh: %v", err)
+	}
+	if !strings.Contains(string(content), "export TEST_EKO_ENV_VAR='eko_test_val'") {
+		t.Errorf("expected env restore script to contain TEST_EKO_ENV_VAR, got:\n%s", string(content))
 	}
 }

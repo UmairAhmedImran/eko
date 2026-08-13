@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 )
 
@@ -28,7 +29,7 @@ func ShouldIgnore(name string, isDir bool) bool {
 				return true
 			}
 		}
-		if name == "eko" || name == "eko.exe" || name == ".eko_env_restore.sh" || name == ".eko_env_vars.json" {
+		if name == "eko" || name == "eko.exe" || name == ".eko_env_restore.sh" || name == ".eko_env_vars.json" || name == ".env" || strings.HasPrefix(name, ".env.") {
 			return true
 		}
 	}
