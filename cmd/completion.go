@@ -28,9 +28,7 @@ Zsh:
   # To load completions for each session, execute once:
   $ eko completion zsh > "${fpath[1]}/_eko"
 
-	# Then clear the completion cache and start a new shell:
-  $ rm -f ~/.zcompdump*
-  $ exec zsh
+  # You will need to start a new shell for this setup to take effect.
 
 Fish:
 
