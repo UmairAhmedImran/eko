@@ -22,6 +22,7 @@ import (
 	"eko/internal/snapshot"
 
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/spf13/cobra"
 )
 
 // setupTestDir creates a temp directory, changes to it, and registers a cleanup.
@@ -1850,5 +1851,71 @@ func TestSaveCommand_failedInsertLeavesNoOrphanManifest(t *testing.T) {
 	}
 	if got := countSnapshotManifests(t); got != 1 {
 		t.Errorf("every retry adds an orphan: expected 1 manifest, got %d", got)
+	}
+}
+
+// Tests for completion command
+
+// executeCommand runs the root command with the given args and captures
+// stdout/stderr into a buffer via cmd.SetOut/SetErr, returning the output
+// and any error. This works because completion.go uses cmd.OutOrStdout()
+// instead of os.Stdout directly.
+
+func executeCommand(root *cobra.Command, args ...string) (string, error) {
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetErr(buf)
+	root.SetArgs(args)
+
+	err := root.Execute()
+	return buf.String(), err
+}
+
+func TestCompletionCmd_ValidShells(t *testing.T) {
+	tests := []struct {
+		name         string
+		shell        string
+		wantInOutput string
+	}{
+		{"bash", "bash", "bash completion"},
+		{"zsh", "zsh", "#compdef"},
+		{"fish", "fish", "fish completion"},
+		{"powershell", "powershell", "Register-ArgumentCompleter"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := executeCommand(rootCmd, "completion", tt.shell)
+			if err != nil {
+				t.Fatalf("unexpected error for shell %q: %v", tt.shell, err)
+			}
+			if out == "" {
+				t.Fatalf("expected non-empty completion script for shell %q", tt.shell)
+			}
+			if !strings.Contains(out, tt.wantInOutput) {
+				t.Errorf("shell %q: expected output to contain %q, got:\n%s", tt.shell, tt.wantInOutput, out)
+			}
+		})
+	}
+}
+
+func TestCompletionCmd_NoArgs(t *testing.T) {
+	_, err := executeCommand(rootCmd, "completion")
+	if err == nil {
+		t.Error("expected error when no shell argument is given, got nil")
+	}
+}
+
+func TestCompletionCmd_InvalidShell(t *testing.T) {
+	_, err := executeCommand(rootCmd, "completion", "invalidshell")
+	if err == nil {
+		t.Error("expected error for invalid shell argument, got nil")
+	}
+}
+
+func TestCompletionCmd_TooManyArgs(t *testing.T) {
+	_, err := executeCommand(rootCmd, "completion", "zsh", "bash")
+	if err == nil {
+		t.Error("expected error when more than one shell argument is given, got nil")
 	}
 }
