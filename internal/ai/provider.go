@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"eko/internal/telemetry"
 )
 
 // Provider interface defines the contract for generating AI change summaries.
@@ -115,7 +117,7 @@ func (o *OpenAIProvider) Name() string {
 	return "openai"
 }
 
-func (o *OpenAIProvider) GenerateSummary(ctx context.Context, cs ChangeSet) (string, error) {
+func (o *OpenAIProvider) GenerateSummary(ctx context.Context, cs ChangeSet) (summary string, err error) {
 	apiKey := o.APIKey
 	if apiKey == "" {
 		apiKey = os.Getenv("OPENAI_API_KEY")
@@ -176,7 +178,18 @@ func (o *OpenAIProvider) GenerateSummary(ctx context.Context, cs ChangeSet) (str
 		client = &http.Client{Timeout: 15 * time.Second}
 	}
 
-	resp, err := client.Do(req)
+	operation := telemetry.StartOperation(
+		ctx,
+		"eko.ai.openai",
+		telemetry.ProviderAttribute("openai"),
+		telemetry.ModelAttribute(model),
+		telemetry.OperationAttribute("ai.generate_summary"),
+	)
+	defer func() {
+		telemetry.EndOperation(operation.Span, err)
+	}()
+
+	resp, err := client.Do(req.WithContext(operation.Context))
 	if err != nil {
 		// Fallback to heuristic on connection error
 		hp := &HeuristicProvider{}
@@ -223,7 +236,7 @@ func (g *GeminiProvider) Name() string {
 	return "gemini"
 }
 
-func (g *GeminiProvider) GenerateSummary(ctx context.Context, cs ChangeSet) (string, error) {
+func (g *GeminiProvider) GenerateSummary(ctx context.Context, cs ChangeSet) (summary string, err error) {
 	apiKey := g.APIKey
 	if apiKey == "" {
 		apiKey = os.Getenv("GEMINI_API_KEY")
@@ -274,7 +287,18 @@ func (g *GeminiProvider) GenerateSummary(ctx context.Context, cs ChangeSet) (str
 		client = &http.Client{Timeout: 15 * time.Second}
 	}
 
-	resp, err := client.Do(req)
+	operation := telemetry.StartOperation(
+		ctx,
+		"eko.ai.gemini",
+		telemetry.ProviderAttribute("gemini"),
+		telemetry.ModelAttribute(model),
+		telemetry.OperationAttribute("ai.generate_summary"),
+	)
+	defer func() {
+		telemetry.EndOperation(operation.Span, err)
+	}()
+
+	resp, err := client.Do(req.WithContext(operation.Context))
 	if err != nil {
 		hp := &HeuristicProvider{}
 		res, _ := hp.GenerateSummary(ctx, cs)

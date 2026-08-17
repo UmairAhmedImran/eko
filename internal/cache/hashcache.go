@@ -14,10 +14,14 @@
 package cache
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
 	"sync"
+	"time"
+
+	"eko/internal/telemetry"
 )
 
 // HashCache wraps the db.sqlite hash_cache table with prepared statement caching
@@ -31,6 +35,18 @@ type HashCache struct {
 
 // New initialises the hash_cache table and pre-compiles prepared SQL statements.
 func New(db *sql.DB) (*HashCache, error) {
+	start := time.Now()
+	success := false
+
+	defer func() {
+		telemetry.RecordSQLite(
+			context.Background(),
+			"hash_cache_init",
+			start,
+			success,
+		)
+	}()
+
 	_, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS hash_cache (
 			path     TEXT    NOT NULL,
@@ -54,6 +70,8 @@ func New(db *sql.DB) (*HashCache, error) {
 		stmtLookup.Close()
 		return nil, fmt.Errorf("hash_cache: prepare store: %w", err)
 	}
+
+	success = true
 
 	return &HashCache{
 		db:         db,
@@ -86,10 +104,29 @@ func (c *HashCache) Store(path string, info os.FileInfo, hash string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	_, err := c.stmtStore.Exec(path, info.ModTime().UnixNano(), info.Size(), hash)
+	start := time.Now()
+	success := false
+
+	defer func() {
+		telemetry.RecordSQLite(
+			context.Background(),
+			"hash_cache_store",
+			start,
+			success,
+		)
+	}()
+
+	_, err := c.stmtStore.Exec(
+		path,
+		info.ModTime().UnixNano(),
+		info.Size(),
+		hash,
+	)
 	if err != nil {
 		return fmt.Errorf("hash_cache: store %s: %w", path, err)
 	}
+
+	success = true
 	return nil
 }
 
@@ -97,6 +134,18 @@ func (c *HashCache) Store(path string, info os.FileInfo, hash string) error {
 func (c *HashCache) Purge(existingPaths map[string]bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	start := time.Now()
+	success := false
+
+	defer func() {
+		telemetry.RecordSQLite(
+			context.Background(),
+			"hash_cache_purge",
+			start,
+			success,
+		)
+	}()
 
 	rows, err := c.db.Query("SELECT DISTINCT path FROM hash_cache")
 	if err != nil {
@@ -111,12 +160,20 @@ func (c *HashCache) Purge(existingPaths map[string]bool) error {
 			stale = append(stale, p)
 		}
 	}
-	rows.Close()
+
+	if err := rows.Err(); err != nil {
+		return err
+	}
 
 	for _, p := range stale {
-		if _, err := c.db.Exec("DELETE FROM hash_cache WHERE path=?", p); err != nil {
+		if _, err := c.db.Exec(
+			"DELETE FROM hash_cache WHERE path=?",
+			p,
+		); err != nil {
 			return err
 		}
 	}
+
+	success = true
 	return nil
 }

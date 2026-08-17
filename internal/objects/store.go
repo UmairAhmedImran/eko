@@ -17,6 +17,7 @@ package objects
 
 import (
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -25,6 +26,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"time"
+
+	"eko/internal/telemetry"
 )
 
 const objectsSubdir = "objects"
@@ -66,11 +70,24 @@ func (s *Store) Exists(hash string) bool {
 // Put compresses and stores data by its SHA-256 hash using gzip.BestCompression.
 // If a blob with that hash already exists the call is a no-op (pure dedup).
 // Returns the hex-encoded SHA-256 hash.
-func (s *Store) Put(data []byte) (string, error) {
-	hash := hashBytes(data)
+func (s *Store) Put(data []byte) (hash string, err error) {
+	start := time.Now()
+	success := false
+
+	defer func() {
+		telemetry.RecordCAS(
+			context.Background(),
+			"put",
+			start,
+			success,
+		)
+	}()
+
+	hash = hashBytes(data)
 
 	// Fast path: already stored — dedup hit, no I/O needed.
 	if s.Exists(hash) {
+		success = true
 		return hash, nil
 	}
 
@@ -79,6 +96,7 @@ func (s *Store) Put(data []byte) (string, error) {
 
 	// Double-check after acquiring lock (another goroutine may have stored it).
 	if s.Exists(hash) {
+		success = true
 		return hash, nil
 	}
 
@@ -89,29 +107,37 @@ func (s *Store) Put(data []byte) (string, error) {
 
 	// Atomic write: write to .tmp then rename.
 	tmp := path + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+
+	f, err := os.OpenFile(
+		tmp,
+		os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
+		0644,
+	)
 	if err != nil {
 		return "", fmt.Errorf("objects: create tmp: %w", err)
 	}
 
-	// Use BestCompression for maximum disk space savings
+	// Use BestCompression for maximum disk space savings.
 	gz, err := gzip.NewWriterLevel(f, gzip.BestCompression)
 	if err != nil {
 		f.Close()
 		os.Remove(tmp)
 		return "", err
 	}
+
 	if _, err := gz.Write(data); err != nil {
 		gz.Close()
 		f.Close()
 		os.Remove(tmp)
 		return "", fmt.Errorf("objects: compress: %w", err)
 	}
+
 	if err := gz.Close(); err != nil {
 		f.Close()
 		os.Remove(tmp)
 		return "", err
 	}
+
 	if err := f.Close(); err != nil {
 		os.Remove(tmp)
 		return "", err
@@ -124,6 +150,8 @@ func (s *Store) Put(data []byte) (string, error) {
 
 	// Make the blob immutable so it can never be accidentally overwritten.
 	_ = os.Chmod(path, 0444)
+
+	success = true
 	return hash, nil
 }
 
@@ -141,7 +169,19 @@ func (s *Store) PutFile(filePath, cachedHash string) (string, error) {
 }
 
 // Get decompresses and returns the raw bytes for a stored hash.
-func (s *Store) Get(hash string) ([]byte, error) {
+func (s *Store) Get(hash string) (data []byte, err error) {
+	start := time.Now()
+	success := false
+
+	defer func() {
+		telemetry.RecordCAS(
+			context.Background(),
+			"get",
+			start,
+			success,
+		)
+	}()
+
 	f, err := os.Open(s.objectPath(hash))
 	if err != nil {
 		return nil, fmt.Errorf("objects: open %s: %w", hash[:8], err)
@@ -154,10 +194,12 @@ func (s *Store) Get(hash string) ([]byte, error) {
 	}
 	defer gz.Close()
 
-	data, err := io.ReadAll(gz)
+	data, err = io.ReadAll(gz)
 	if err != nil {
 		return nil, fmt.Errorf("objects: decompress %s: %w", hash[:8], err)
 	}
+
+	success = true
 	return data, nil
 }
 

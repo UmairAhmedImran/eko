@@ -2,12 +2,15 @@ package cmd
 
 import (
 	"context"
-	"eko/internal/ai"
-	"eko/internal/db"
-	"eko/internal/snapshot"
 	"errors"
 	"fmt"
 	"os"
+	"time"
+
+	"eko/internal/ai"
+	"eko/internal/db"
+	"eko/internal/snapshot"
+	"eko/internal/telemetry"
 
 	"github.com/spf13/cobra"
 )
@@ -37,13 +40,40 @@ Each snapshot generates a lightweight manifest file and stores unique file blobs
   # Save with AI summary using a specific provider
   eko save --ai --provider heuristic`,
 	PreRunE: requireInitialized,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, args []string) (err error) {
+		ctx := cmd.Context()
+		if ctx == nil {
+			ctx = context.Background()
+		}
+
+		operation := telemetry.StartOperation(
+			ctx,
+			"eko.save",
+			telemetry.CommandAttribute("save"),
+		)
+		defer func() {
+			telemetry.EndOperation(operation.Span, err)
+		}()
+
+		start := time.Now()
+		success := false
+		defer func() {
+			telemetry.RecordCommand(
+				operation.Context,
+				"save",
+				start,
+				success,
+			)
+		}()
+
 		database := db.InitDB()
 		defer database.Close()
 
-		// Get previous snapshot path before creating a new one
+		// Get previous snapshot path before creating a new one.
 		var prevPath string
-		_ = database.QueryRow("SELECT path FROM snapshots ORDER BY created_at DESC, rowid DESC LIMIT 1").Scan(&prevPath)
+		_ = database.QueryRow(
+			"SELECT path FROM snapshots ORDER BY created_at DESC, rowid DESC LIMIT 1",
+		).Scan(&prevPath)
 
 		id, path, err := snapshot.CreateSnapshot(database)
 		if err != nil {
@@ -51,11 +81,17 @@ Each snapshot generates a lightweight manifest file and stores unique file blobs
 		}
 
 		var summaryText string
+
 		if saveAI {
-			ctx := context.Background()
-			res, err := ai.GenerateSnapshotSummary(ctx, prevPath, path, saveAIProv)
-			if err == nil && res != nil {
+			res, summaryErr := ai.GenerateSnapshotSummary(
+				operation.Context,
+				prevPath,
+				path,
+				saveAIProv,
+			)
+			if summaryErr == nil && res != nil {
 				summaryText = res.Summary
+
 				if saveMessage == "snapshot" {
 					saveMessage = res.Summary
 				}
@@ -70,16 +106,27 @@ Each snapshot generates a lightweight manifest file and stores unique file blobs
 			summaryText,
 		); err != nil {
 			// CreateSnapshot has already written the manifest, but the failed row
-			// insert leaves no supported way to list or restore it. Remove that
-			// unreachable manifest so retries do not accumulate phantom snapshots.
+			// insert leaves no supported way to list or restore it.
 			dbErr := fmt.Errorf("failed to save snapshot to db: %w", err)
+
 			if rmErr := os.Remove(path); rmErr != nil {
-				return errors.Join(dbErr, fmt.Errorf("could not remove orphaned snapshot manifest %s: %w", path, rmErr))
+				return errors.Join(
+					dbErr,
+					fmt.Errorf(
+						"could not remove orphaned snapshot manifest %s: %w",
+						path,
+						rmErr,
+					),
+				)
 			}
+
 			return dbErr
 		}
 
+		success = true
+
 		fmt.Println("Snapshot saved:", id)
+
 		if summaryText != "" {
 			fmt.Println("AI Summary:", summaryText)
 		}

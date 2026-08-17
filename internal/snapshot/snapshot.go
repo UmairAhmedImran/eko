@@ -21,6 +21,7 @@
 package snapshot
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -38,6 +39,7 @@ import (
 	"eko/internal/cache"
 	"eko/internal/manifest"
 	"eko/internal/objects"
+	"eko/internal/telemetry"
 	"eko/internal/util"
 )
 
@@ -47,7 +49,34 @@ const ekoDir = ".eko"
 // writes a manifest. It accepts the open database so it can use the hash cache.
 //
 // Returns the snapshot ID and the manifest path (stored in db.snapshots.path).
+// CreateSnapshot captures the current workspace into the CAS object store and
+// writes a manifest. It accepts the open database so it can use the hash cache.
+//
+// Returns the snapshot ID and the manifest path (stored in db.snapshots.path).
 func CreateSnapshot(db *sql.DB) (id, path string, err error) {
+	ctx := context.Background()
+
+	operation := telemetry.StartOperation(
+		ctx,
+		"eko.snapshot.create",
+		telemetry.OperationAttribute("snapshot.create"),
+	)
+	defer func() {
+		telemetry.EndOperation(operation.Span, err)
+	}()
+
+	start := time.Now()
+	success := false
+
+	defer func() {
+		telemetry.RecordCAS(
+			operation.Context,
+			"snapshot.create",
+			start,
+			success,
+		)
+	}()
+
 	id, err = generateID()
 	if err != nil {
 		return "", "", err
@@ -89,6 +118,9 @@ func CreateSnapshot(db *sql.DB) (id, path string, err error) {
 	}
 
 	manifestPath := filepath.Join(ekoDir, "manifests", id+".json")
+
+	success = true
+
 	return id, manifestPath, nil
 }
 
