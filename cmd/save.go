@@ -4,10 +4,12 @@ import (
 	"context"
 	"eko/internal/ai"
 	"eko/internal/db"
+	"eko/internal/notify"
 	"eko/internal/snapshot"
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -65,6 +67,15 @@ Each snapshot generates a lightweight manifest file and stores unique file blobs
 					saveMessage = res.Summary
 				}
 			}
+		}
+
+		// Send webhook notification asynchronously if configured
+		if webhookURL := os.Getenv("EKO_WEBHOOK_URL"); webhookURL != "" && summaryText != "" {
+			go func() {
+				if err := notify.SendWebhook(webhookURL, id, summaryText, saveMessage, time.Now()); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to send webhook notification: %v\n", err)
+				}
+			}()
 		}
 
 		if _, err := database.Exec(
