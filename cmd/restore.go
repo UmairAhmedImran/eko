@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"eko/internal/db"
 	"eko/internal/snapshot"
+	"eko/internal/util"
 	"errors"
 	"fmt"
 	"io"
@@ -13,7 +14,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var restoreYes bool
+var (
+	restoreYes      bool
+	restoreProgress bool
+)
 
 // errRestoreNeedsTTY is returned when confirmation is required but there is no
 // terminal to ask on. Failing is the only safe option here: assuming "yes" would
@@ -48,7 +52,21 @@ var restoreCmd = &cobra.Command{
 			}
 		}
 
-		err = snapshot.RestoreSnapshot(path)
+		// Set up progress bar if enabled and stderr is a TTY
+		var onProgress func()
+		showProgress := restoreProgress && util.IsTTY(os.Stderr)
+		if showProgress {
+			// For restore, we use the pending changes count as an estimate
+			changes, err := snapshot.PendingRestoreChanges(path)
+			if err == nil && len(changes) > 0 {
+				prog := util.NewProgress(len(changes), os.Stderr, "Restoring snapshot...")
+				prog.Start()
+				defer prog.Stop()
+				onProgress = prog.Increment
+			}
+		}
+
+		err = snapshot.RestoreSnapshot(path, onProgress)
 		if err != nil {
 			return err
 		}
@@ -110,5 +128,7 @@ func pluralPaths(n int) string {
 func init() {
 	restoreCmd.Flags().BoolVarP(&restoreYes, "yes", "y", false,
 		"skip the confirmation prompt (required when stdin is not a terminal)")
+	restoreCmd.Flags().BoolVar(&restoreProgress, "progress", true,
+		"show progress bar during restore (default true when TTY)")
 	rootCmd.AddCommand(restoreCmd)
 }

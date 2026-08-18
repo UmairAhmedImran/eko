@@ -22,7 +22,7 @@ func TestCopyDir_basic(t *testing.T) {
 		}
 	}
 
-	if err := CopyDir(src, dst); err != nil {
+	if err := CopyDir(src, dst, nil); err != nil {
 		t.Fatalf("CopyDir returned error: %v", err)
 	}
 
@@ -51,7 +51,7 @@ func TestCopyDir_nested(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := CopyDir(src, dst); err != nil {
+	if err := CopyDir(src, dst, nil); err != nil {
 		t.Fatalf("CopyDir returned error: %v", err)
 	}
 
@@ -78,7 +78,7 @@ func TestCopyDir_skipsEko(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := CopyDir(src, dst); err != nil {
+	if err := CopyDir(src, dst, nil); err != nil {
 		t.Fatalf("CopyDir returned error: %v", err)
 	}
 
@@ -94,7 +94,7 @@ func TestCopyDir_skipsEko(t *testing.T) {
 func TestCopyDir_emptySource(t *testing.T) {
 	src := t.TempDir()
 	dst := t.TempDir()
-	if err := CopyDir(src, dst); err != nil {
+	if err := CopyDir(src, dst, nil); err != nil {
 		t.Fatalf("unexpected error on empty source: %v", err)
 	}
 }
@@ -109,7 +109,7 @@ func TestCopyDir_preservesContent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := CopyDir(src, dst); err != nil {
+	if err := CopyDir(src, dst, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -131,7 +131,7 @@ func TestCopyDir_preservesFileMode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := CopyDir(src, dst); err != nil {
+	if err := CopyDir(src, dst, nil); err != nil {
 		t.Fatalf("CopyDir returned error: %v", err)
 	}
 
@@ -159,7 +159,7 @@ func TestCopyDir_preservesSymlink(t *testing.T) {
 		t.Skipf("unable to create symlink in test env: %v", err)
 	}
 
-	if err := CopyDir(src, dst); err != nil {
+	if err := CopyDir(src, dst, nil); err != nil {
 		t.Fatalf("CopyDir returned error: %v", err)
 	}
 
@@ -218,7 +218,7 @@ func TestCopyDir_skipsEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := CopyDir(src, dst); err != nil {
+	if err := CopyDir(src, dst, nil); err != nil {
 		t.Fatalf("CopyDir returned error: %v", err)
 	}
 
