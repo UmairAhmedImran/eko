@@ -60,7 +60,7 @@ func TestCreateSnapshot_CAS(t *testing.T) {
 	database := db.InitDB()
 	defer database.Close()
 
-	id, path, err := CreateSnapshot(database, false)
+	id, path, err := CreateSnapshot(database, false, nil)
 	if err != nil {
 		t.Fatalf("CreateSnapshot failed: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestRestoreSnapshot_CAS(t *testing.T) {
 	database := db.InitDB()
 	defer database.Close()
 
-	_, path, err := CreateSnapshot(database, false)
+	_, path, err := CreateSnapshot(database, false, nil)
 	if err != nil {
 		t.Fatalf("CreateSnapshot failed: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestRestoreSnapshot_CAS(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "newfile.go"), []byte("package newfile"), 0644)
 
 	// Restore
-	if err := RestoreSnapshot(path); err != nil {
+	if err := RestoreSnapshot(path, nil); err != nil {
 		t.Fatalf("RestoreSnapshot failed: %v", err)
 	}
 
@@ -125,7 +125,7 @@ func TestCreateSnapshot_EnvOptIn(t *testing.T) {
 	t.Setenv("TEST_EKO_ENV_VAR", "eko_test_val")
 
 	// 1. Save WITHOUT env (default)
-	idNoEnv, pathNoEnv, err := CreateSnapshot(database, false)
+	idNoEnv, pathNoEnv, err := CreateSnapshot(database, false, nil)
 	if err != nil {
 		t.Fatalf("CreateSnapshot failed: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestCreateSnapshot_EnvOptIn(t *testing.T) {
 	}
 
 	// Verify restore does NOT create .eko_env_restore.sh
-	if err := RestoreSnapshot(pathNoEnv); err != nil {
+	if err := RestoreSnapshot(pathNoEnv, nil); err != nil {
 		t.Fatalf("RestoreSnapshot failed: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".eko_env_restore.sh")); !os.IsNotExist(err) {
@@ -146,7 +146,7 @@ func TestCreateSnapshot_EnvOptIn(t *testing.T) {
 	}
 
 	// 2. Save WITH env
-	idWithEnv, pathWithEnv, err := CreateSnapshot(database, true)
+	idWithEnv, pathWithEnv, err := CreateSnapshot(database, true, nil)
 	if err != nil {
 		t.Fatalf("CreateSnapshot failed: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestCreateSnapshot_EnvOptIn(t *testing.T) {
 	}
 
 	// Verify restore DOES create .eko_env_restore.sh with 0600 permissions
-	if err := RestoreSnapshot(pathWithEnv); err != nil {
+	if err := RestoreSnapshot(pathWithEnv, nil); err != nil {
 		t.Fatalf("RestoreSnapshot failed: %v", err)
 	}
 	restoreScriptPath := filepath.Join(dir, ".eko_env_restore.sh")

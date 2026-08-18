@@ -5,6 +5,7 @@ import (
 	"eko/internal/ai"
 	"eko/internal/db"
 	"eko/internal/snapshot"
+	"eko/internal/util"
 	"errors"
 	"fmt"
 	"os"
@@ -13,10 +14,11 @@ import (
 )
 
 var (
-	saveMessage string
-	saveAI      bool
-	saveAIProv  string
-	saveWithEnv bool
+	saveMessage  string
+	saveAI       bool
+	saveAIProv   string
+	saveWithEnv  bool
+	saveProgress bool
 )
 
 var saveCmd = &cobra.Command{
@@ -50,7 +52,20 @@ Each snapshot generates a lightweight manifest file and stores unique file blobs
 			fmt.Println("Warning: Capturing environment variables may store sensitive credentials (API keys, passwords, etc.) in the snapshot.")
 		}
 
-		id, path, err := snapshot.CreateSnapshot(database, saveWithEnv)
+		// Set up progress bar if enabled and stdout is a TTY
+		var onProgress func()
+		showProgress := saveProgress && util.IsTTY(os.Stderr)
+		if showProgress {
+			fileCount, err := snapshot.CountFiles()
+			if err == nil && fileCount > 0 {
+				prog := util.NewProgress(fileCount, os.Stderr, "Saving snapshot...")
+				prog.Start()
+				defer prog.Stop()
+				onProgress = prog.Increment
+			}
+		}
+
+		id, path, err := snapshot.CreateSnapshot(database, saveWithEnv, onProgress)
 		if err != nil {
 			return err
 		}
@@ -98,5 +113,6 @@ func init() {
 	saveCmd.Flags().BoolVarP(&saveAI, "ai", "a", false, "auto-generate AI summary of changes")
 	saveCmd.Flags().StringVar(&saveAIProv, "provider", "auto", "AI provider for auto-generated summary (auto, heuristic, openai, gemini)")
 	saveCmd.Flags().BoolVar(&saveWithEnv, "with-env", false, "capture environment variables (WARNING: this may include sensitive credentials)")
+	saveCmd.Flags().BoolVar(&saveProgress, "progress", true, "show progress bar during save (default true when TTY)")
 	rootCmd.AddCommand(saveCmd)
 }

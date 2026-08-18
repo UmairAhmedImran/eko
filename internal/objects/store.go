@@ -284,7 +284,8 @@ func (s *Store) ExtractTo(hash string, dstPath string, mode os.FileMode) error {
 
 // RestoreTree extracts all files described by tree (path → FileEntry) into dstDir
 // using a parallel worker pool for maximum throughput.
-func (s *Store) RestoreTree(tree map[string]FileEntry, dstDir string) error {
+// The optional onProgress callback is invoked after each file is extracted.
+func (s *Store) RestoreTree(tree map[string]FileEntry, dstDir string, onProgress func()) error {
 	type job struct {
 		rel  string
 		hash string
@@ -305,6 +306,9 @@ func (s *Store) RestoreTree(tree map[string]FileEntry, dstDir string) error {
 				if err := s.ExtractTo(j.hash, dst, j.mode); err != nil {
 					errs <- err
 					return
+				}
+				if onProgress != nil {
+					onProgress()
 				}
 			}
 		}()
