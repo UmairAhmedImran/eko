@@ -4,53 +4,23 @@
 
 # Eko User Guide ✦
 
-Eko is an AI snapshot versioning tool designed to capture, inspect, diff, and restore directory states. It can be run either as a lightweight command-line interface (CLI) or as a rich native desktop application.
+Eko is an AI snapshot versioning tool designed to capture, inspect, diff, and restore directory states from the command line.
 
 ---
 
 ## 1. Installation
 
-Depending on your use case, you can compile Eko in one of three ways:
+Eko is a single Go binary. Build it from the repository root:
 
-### Option A: Standalone CLI + UI Binary (Recommended)
-This compiles a single binary `eko` containing both the CLI commands and the native visual UI.
+```bash
+git clone https://github.com/kavix/eko.git
+cd eko
+go build -o eko .
+```
 
-1. Build the React/Next.js frontend assets:
-   ```bash
-   (cd ui && npm run build)
-   ```
-2. Build the Go binary (requires Go, but does not require the Wails CLI):
-   - **On macOS**:
-     ```bash
-     CGO_LDFLAGS="-framework UniformTypeIdentifiers" go build -tags desktop,production -o eko .
-     ```
-   - **On Windows / Linux**:
-     ```bash
-     go build -tags desktop,production -o eko .
-     ```
-   *You can now run `./eko ui` or any other CLI command directly from this single binary.*
+Copy the resulting `eko` binary to a folder in your `$PATH` (e.g. `/usr/local/bin/`).
 
-### Option B: Native macOS App Bundle
-This packages Eko as a standard double-clickable macOS application bundle.
-
-1. Ensure you have the Wails CLI installed:
-   ```bash
-   go install github.com/wailsapp/wails/v2/cmd/wails@latest
-   ```
-2. Build the application bundle:
-   ```bash
-   wails build
-   ```
-   *Note: This creates a native app bundle at `build/bin/eko.app`. You can copy the executable inside `/build/bin/eko.app/Contents/MacOS/eko` to your system path (e.g., `/usr/local/bin/eko`) to use the `eko` command globally.*
-
-### Option C: Lightweight CLI Only
-This compiles only the command-line interface, skipping all GUI/Wails dependencies. Ideal for servers, headless environments, or if you do not want graphical components compiled in.
-
-1. Compile the binary with the `no_gui` build tag:
-   ```bash
-   go build -tags no_gui -o eko .
-   ```
-2. Copy the resulting `eko` binary to a folder in your `$PATH` (e.g., `/usr/local/bin/`).
+The full command list, including `diff`, `tag`, `clean`, `migrate`, `completion`, and the `eko ai` suite, is in the [CLI Reference](docs/docs/cli-reference.md).
 
 ---
 
@@ -129,19 +99,3 @@ eko restore <snapshot-id>
 ```
 *Example:* `eko restore 3b7f2a1e`
 *Output:* `Restored: 3b7f2a1e`
-
----
-
-## 3. Graphical UI Usage (Wails Only)
-
-If you compiled Eko using **Option A (Desktop App)**, you can launch the native visual memory timeline interface directly from your command line:
-
-```bash
-eko ui
-```
-
-### Visual UI Features:
-- **Interactive Timeline**: Scroll through snapshots in chronological order.
-- **Changed Files List**: Inspect exactly how many files and which specific paths were added, modified, or deleted in each snapshot.
-- **Monaco Diff Viewer**: Click on any changed file to view side-by-side split diffs with full syntax highlighting.
-- **Graphical Restore**: Click the **Restore** button on any snapshot in the timeline or details panel to revert your workspace instantly.
