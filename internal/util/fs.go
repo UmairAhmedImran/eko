@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 )
 
@@ -28,7 +29,7 @@ func ShouldIgnore(name string, isDir bool) bool {
 				return true
 			}
 		}
-		if name == "eko" || name == "eko.exe" || name == ".eko_env_restore.sh" || name == ".eko_env_vars.json" {
+		if name == "eko" || name == "eko.exe" || name == ".eko_env_restore.sh" || name == ".eko_env_vars.json" || name == ".env" || strings.HasPrefix(name, ".env.") {
 			return true
 		}
 	}
@@ -43,7 +44,9 @@ func ShouldIgnore(name string, isDir bool) bool {
 //  2. Dispatch every file path to a fixed-size worker pool (NumCPU workers)
 //     so multiple files are copied in parallel, saturating both CPU and I/O.
 //  3. Collect the first error from any worker and return it after draining.
-func CopyDir(src, dst string) error {
+//
+// The optional onProgress callback is invoked after each file is copied.
+func CopyDir(src, dst string, onProgress func()) error {
 	absDst, err := filepath.Abs(dst)
 	if err != nil {
 		return err
@@ -63,6 +66,9 @@ func CopyDir(src, dst string) error {
 				if err := copyFile(t.src, t.dst, t.mode); err != nil {
 					errs <- err
 					return
+				}
+				if onProgress != nil {
+					onProgress()
 				}
 			}
 		}()

@@ -22,7 +22,7 @@ func TestCopyDir_basic(t *testing.T) {
 		}
 	}
 
-	if err := CopyDir(src, dst); err != nil {
+	if err := CopyDir(src, dst, nil); err != nil {
 		t.Fatalf("CopyDir returned error: %v", err)
 	}
 
@@ -51,7 +51,7 @@ func TestCopyDir_nested(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := CopyDir(src, dst); err != nil {
+	if err := CopyDir(src, dst, nil); err != nil {
 		t.Fatalf("CopyDir returned error: %v", err)
 	}
 
@@ -78,7 +78,7 @@ func TestCopyDir_skipsEko(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := CopyDir(src, dst); err != nil {
+	if err := CopyDir(src, dst, nil); err != nil {
 		t.Fatalf("CopyDir returned error: %v", err)
 	}
 
@@ -94,7 +94,7 @@ func TestCopyDir_skipsEko(t *testing.T) {
 func TestCopyDir_emptySource(t *testing.T) {
 	src := t.TempDir()
 	dst := t.TempDir()
-	if err := CopyDir(src, dst); err != nil {
+	if err := CopyDir(src, dst, nil); err != nil {
 		t.Fatalf("unexpected error on empty source: %v", err)
 	}
 }
@@ -109,7 +109,7 @@ func TestCopyDir_preservesContent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := CopyDir(src, dst); err != nil {
+	if err := CopyDir(src, dst, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -131,7 +131,7 @@ func TestCopyDir_preservesFileMode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := CopyDir(src, dst); err != nil {
+	if err := CopyDir(src, dst, nil); err != nil {
 		t.Fatalf("CopyDir returned error: %v", err)
 	}
 
@@ -159,7 +159,7 @@ func TestCopyDir_preservesSymlink(t *testing.T) {
 		t.Skipf("unable to create symlink in test env: %v", err)
 	}
 
-	if err := CopyDir(src, dst); err != nil {
+	if err := CopyDir(src, dst, nil); err != nil {
 		t.Fatalf("CopyDir returned error: %v", err)
 	}
 
@@ -177,5 +177,58 @@ func TestCopyDir_preservesSymlink(t *testing.T) {
 	}
 	if linkTarget != "target.txt" {
 		t.Fatalf("copied symlink target mismatch: got %q, want %q", linkTarget, "target.txt")
+	}
+}
+
+func TestShouldIgnore_Env(t *testing.T) {
+	testCases := []struct {
+		name     string
+		isDir    bool
+		expected bool
+	}{
+		{".env", false, true},
+		{".env.local", false, true},
+		{".env.development", false, true},
+		{".env.production.local", false, true},
+		{"env", false, false},
+		{"dotenv", false, false},
+		{".env", true, false},
+		{".env.local", true, false},
+	}
+
+	for _, tc := range testCases {
+		got := ShouldIgnore(tc.name, tc.isDir)
+		if got != tc.expected {
+			t.Errorf("ShouldIgnore(%q, %v) = %v; want %v", tc.name, tc.isDir, got, tc.expected)
+		}
+	}
+}
+
+func TestCopyDir_skipsEnv(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(src, ".env"), []byte("DB_PASS=secret"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, ".env.local"), []byte("API_KEY=123"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "normal.txt"), []byte("normal text"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := CopyDir(src, dst, nil); err != nil {
+		t.Fatalf("CopyDir returned error: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dst, ".env")); !os.IsNotExist(err) {
+		t.Error(".env file should not be copied to dst")
+	}
+	if _, err := os.Stat(filepath.Join(dst, ".env.local")); !os.IsNotExist(err) {
+		t.Error(".env.local file should not be copied to dst")
+	}
+	if _, err := os.Stat(filepath.Join(dst, "normal.txt")); err != nil {
+		t.Errorf("normal.txt should have been copied: %v", err)
 	}
 }

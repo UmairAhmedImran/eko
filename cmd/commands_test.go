@@ -15,12 +15,14 @@ import (
 	"strings"
 	"testing"
 
+	"eko/internal/api"
 	"eko/internal/db"
 	"eko/internal/manifest"
 	"eko/internal/objects"
 	"eko/internal/snapshot"
 
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/spf13/cobra"
 )
 
 // setupTestDir creates a temp directory, changes to it, and registers a cleanup.
@@ -528,6 +530,79 @@ func TestSaveCommand_customMessage(t *testing.T) {
 	}
 	if message != "custom test description" {
 		t.Errorf("expected message 'custom test description', got %q", message)
+	}
+}
+
+func TestSaveCommand_withEnv(t *testing.T) {
+	dir := setupTestDir(t)
+	_ = initCmd.RunE(initCmd, []string{})
+
+	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set with-env flag and a custom environment variable
+	t.Setenv("TEST_CLI_ENV_VAR", "cli_test_val")
+	saveWithEnv = true
+	defer func() { saveWithEnv = false }() // reset to default
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := saveCmd.RunE(saveCmd, []string{})
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("saveCmd withEnv failed: %v", err)
+	}
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	if !strings.Contains(output, "Warning: Capturing environment variables may store sensitive credentials") {
+		t.Errorf("expected output to contain environment warning, got: %q", output)
+	}
+
+	// Verify database record has been saved
+	database := db.InitDB()
+	var id string
+	err = database.QueryRow("SELECT id FROM snapshots LIMIT 1").Scan(&id)
+	database.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run restore
+	withRestoreYes(t, true)
+	if err := restoreCmd.RunE(restoreCmd, []string{id}); err != nil {
+		t.Fatalf("restoreCmd failed: %v", err)
+	}
+
+	// Verify .eko_env_restore.sh is created
+	restoreScriptPath := filepath.Join(dir, ".eko_env_restore.sh")
+	info, err := os.Stat(restoreScriptPath)
+	if err != nil {
+		t.Fatalf(".eko_env_restore.sh was not created: %v", err)
+	}
+
+	// Check permissions on Unix/macOS
+	if runtime.GOOS != "windows" {
+		if perm := info.Mode().Perm(); perm != 0600 {
+			t.Errorf("expected file permissions 0600, got %o", perm)
+		}
+	}
+
+	// Check content
+	content, err := os.ReadFile(restoreScriptPath)
+	if err != nil {
+		t.Fatalf("failed to read .eko_env_restore.sh: %v", err)
+	}
+	if !strings.Contains(string(content), "export TEST_CLI_ENV_VAR='cli_test_val'") {
+		t.Errorf("expected env restore script to contain TEST_CLI_ENV_VAR, got:\n%s", string(content))
 	}
 }
 
@@ -1532,6 +1607,165 @@ func TestCleanCommand_nonAtomicFailureReportsProgress(t *testing.T) {
 	}
 }
 
+func TestDiffCommand(t *testing.T) {
+	dir := setupTestDir(t)
+	_ = initCmd.RunE(initCmd, []string{})
+
+	// Create and save first snapshot
+	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("v1"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_ = saveCmd.RunE(saveCmd, []string{})
+
+	database := db.InitDB()
+	var id1 string
+	err := database.QueryRow("SELECT id FROM snapshots ORDER BY rowid DESC LIMIT 1").Scan(&id1)
+	database.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Modify file and add new file
+	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("v2"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "newfile.txt"), []byte("new"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_ = saveCmd.RunE(saveCmd, []string{})
+
+	database = db.InitDB()
+	var id2 string
+	err = database.QueryRow("SELECT id FROM snapshots ORDER BY rowid DESC LIMIT 1").Scan(&id2)
+	database.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test 1: Default summary mode
+	t.Run("default summary", func(t *testing.T) {
+		oldStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		diffJSON = false
+		diffFull = false
+		err := diffCmd.RunE(diffCmd, []string{id1, id2})
+
+		w.Close()
+		os.Stdout = oldStdout
+
+		if err != nil {
+			t.Fatalf("diff command failed: %v", err)
+		}
+
+		var buf bytes.Buffer
+		_, _ = buf.ReadFrom(r)
+		output := buf.String()
+
+		if !strings.Contains(output, "Modified: hello.txt") {
+			t.Errorf("expected output to contain 'Modified: hello.txt', got: %q", output)
+		}
+		if !strings.Contains(output, "Added:    newfile.txt") {
+			t.Errorf("expected output to contain 'Added:    newfile.txt', got: %q", output)
+		}
+	})
+
+	// Test 2: Verbose/Full mode
+	t.Run("verbose full", func(t *testing.T) {
+		oldStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		diffJSON = false
+		diffFull = true
+		err := diffCmd.RunE(diffCmd, []string{id1, id2})
+
+		w.Close()
+		os.Stdout = oldStdout
+
+		if err != nil {
+			t.Fatalf("diff command failed: %v", err)
+		}
+
+		var buf bytes.Buffer
+		_, _ = buf.ReadFrom(r)
+		output := buf.String()
+
+		if !strings.Contains(output, "--- hello.txt (Modified) ---") ||
+			!strings.Contains(output, "--- Original\nv1") ||
+			!strings.Contains(output, "+++ Modified\nv2") {
+			t.Errorf("expected output to contain modified details, got: %q", output)
+		}
+
+		if !strings.Contains(output, "--- newfile.txt (Added) ---") ||
+			!strings.Contains(output, "+++ Content\nnew") {
+			t.Errorf("expected output to contain added details, got: %q", output)
+		}
+	})
+
+	// Test 3: JSON mode
+	t.Run("json mode", func(t *testing.T) {
+		oldStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		diffJSON = true
+		diffFull = false
+		err := diffCmd.RunE(diffCmd, []string{id1, id2})
+
+		w.Close()
+		os.Stdout = oldStdout
+
+		if err != nil {
+			t.Fatalf("diff command failed: %v", err)
+		}
+
+		var buf bytes.Buffer
+		_, _ = buf.ReadFrom(r)
+		output := buf.String()
+
+		var records []api.DiffFile
+		if err := json.Unmarshal(buf.Bytes(), &records); err != nil {
+			t.Fatalf("failed to unmarshal JSON output: %v, output: %s", err, output)
+		}
+
+		foundHello := false
+		foundNewfile := false
+		for _, rec := range records {
+			if rec.Name == "hello.txt" {
+				foundHello = true
+				if rec.Original != "v1" || rec.Modified != "v2" {
+					t.Errorf("unexpected content for hello.txt: %+v", rec)
+				}
+			}
+			if rec.Name == "newfile.txt" {
+				foundNewfile = true
+				if rec.Original != "" || rec.Modified != "new" {
+					t.Errorf("unexpected content for newfile.txt: %+v", rec)
+				}
+			}
+		}
+
+		if !foundHello || !foundNewfile {
+			t.Errorf("missing records in JSON output, got: %s", output)
+		}
+	})
+
+	// Test 4: Unknown snapshot IDs
+	t.Run("unknown ids", func(t *testing.T) {
+		diffJSON = false
+		diffFull = false
+		err := diffCmd.RunE(diffCmd, []string{id1, "unknownid"})
+		if err == nil {
+			t.Error("expected error with unknown snapshot ID")
+		}
+		if !strings.Contains(err.Error(), `snapshot or tag "unknownid" not found`) {
+			t.Errorf("expected not found error message, got: %v", err)
+		}
+	})
+}
+
 // --- #93: a failed insert must not strand a snapshot manifest ---------------
 
 // countSnapshotManifests returns the number of files under .eko/manifests.
@@ -1617,5 +1851,71 @@ func TestSaveCommand_failedInsertLeavesNoOrphanManifest(t *testing.T) {
 	}
 	if got := countSnapshotManifests(t); got != 1 {
 		t.Errorf("every retry adds an orphan: expected 1 manifest, got %d", got)
+	}
+}
+
+// Tests for completion command
+
+// executeCommand runs the root command with the given args and captures
+// stdout/stderr into a buffer via cmd.SetOut/SetErr, returning the output
+// and any error. This works because completion.go uses cmd.OutOrStdout()
+// instead of os.Stdout directly.
+
+func executeCommand(root *cobra.Command, args ...string) (string, error) {
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetErr(buf)
+	root.SetArgs(args)
+
+	err := root.Execute()
+	return buf.String(), err
+}
+
+func TestCompletionCmd_ValidShells(t *testing.T) {
+	tests := []struct {
+		name         string
+		shell        string
+		wantInOutput string
+	}{
+		{"bash", "bash", "bash completion"},
+		{"zsh", "zsh", "#compdef"},
+		{"fish", "fish", "fish completion"},
+		{"powershell", "powershell", "Register-ArgumentCompleter"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := executeCommand(rootCmd, "completion", tt.shell)
+			if err != nil {
+				t.Fatalf("unexpected error for shell %q: %v", tt.shell, err)
+			}
+			if out == "" {
+				t.Fatalf("expected non-empty completion script for shell %q", tt.shell)
+			}
+			if !strings.Contains(out, tt.wantInOutput) {
+				t.Errorf("shell %q: expected output to contain %q, got:\n%s", tt.shell, tt.wantInOutput, out)
+			}
+		})
+	}
+}
+
+func TestCompletionCmd_NoArgs(t *testing.T) {
+	_, err := executeCommand(rootCmd, "completion")
+	if err == nil {
+		t.Error("expected error when no shell argument is given, got nil")
+	}
+}
+
+func TestCompletionCmd_InvalidShell(t *testing.T) {
+	_, err := executeCommand(rootCmd, "completion", "invalidshell")
+	if err == nil {
+		t.Error("expected error for invalid shell argument, got nil")
+	}
+}
+
+func TestCompletionCmd_TooManyArgs(t *testing.T) {
+	_, err := executeCommand(rootCmd, "completion", "zsh", "bash")
+	if err == nil {
+		t.Error("expected error when more than one shell argument is given, got nil")
 	}
 }

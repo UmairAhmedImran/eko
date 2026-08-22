@@ -45,15 +45,33 @@ import (
 
 const ekoDir = ".eko"
 
+// CountFiles returns the number of files in the current working directory
+// that would be included in a snapshot (excluding ignored files/dirs).
+func CountFiles() (int, error) {
+	var count int
+	err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if util.ShouldIgnore(filepath.Base(path), info.IsDir()) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+			count++
+		}
+		return nil
+	})
+	return count, err
+}
+
 // CreateSnapshot captures the current workspace into the CAS object store and
 // writes a manifest. It accepts the open database so it can use the hash cache.
 //
 // Returns the snapshot ID and the manifest path (stored in db.snapshots.path).
-// CreateSnapshot captures the current workspace into the CAS object store and
-// writes a manifest. It accepts the open database so it can use the hash cache.
-//
-// Returns the snapshot ID and the manifest path (stored in db.snapshots.path).
-func CreateSnapshot(db *sql.DB) (id, path string, err error) {
+func CreateSnapshot(db *sql.DB, withEnv bool, onProgress func()) (id, path string, err error) {
 	ctx := context.Background()
 
 	operation := telemetry.StartOperation(
@@ -77,35 +95,43 @@ func CreateSnapshot(db *sql.DB) (id, path string, err error) {
 		)
 	}()
 
+	// Generate a unique snapshot ID.
 	id, err = generateID()
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("snapshot: generate ID: %w", err)
 	}
 
+	// Open the CAS object store.
 	store, err := objects.New(ekoDir)
 	if err != nil {
 		return "", "", fmt.Errorf("snapshot: open object store: %w", err)
 	}
 
+	// Open the hash cache. Cache failure is non-fatal; we can still
+	// create the snapshot by hashing files normally.
 	hc, err := cache.New(db)
 	if err != nil {
-		// Hash cache failure is non-fatal: fall back to always hashing.
 		hc = nil
 	} else {
 		defer hc.Close()
 	}
 
-	tree, err := buildTree(store, hc)
+	// Walk the workspace and store files in the CAS.
+	tree, err := buildTree(store, hc, onProgress)
 	if err != nil {
 		return "", "", fmt.Errorf("snapshot: build tree: %w", err)
 	}
 
-	// Capture and store environment variables as a blob.
-	envHash, err := captureEnvVars(store)
-	if err != nil {
-		return "", "", fmt.Errorf("snapshot: capture env: %w", err)
+	// Optionally capture the current environment variables as a CAS blob.
+	var envHash string
+	if withEnv {
+		envHash, err = captureEnvVars(store)
+		if err != nil {
+			return "", "", fmt.Errorf("snapshot: capture env: %w", err)
+		}
 	}
 
+	// Build the snapshot manifest.
 	m := &manifest.Manifest{
 		ID:        id,
 		CreatedAt: time.Now(),
@@ -113,6 +139,7 @@ func CreateSnapshot(db *sql.DB) (id, path string, err error) {
 		EnvHash:   envHash,
 	}
 
+	// Persist the manifest.
 	if err := manifest.Write(ekoDir, m); err != nil {
 		return "", "", fmt.Errorf("snapshot: write manifest: %w", err)
 	}
@@ -178,17 +205,18 @@ func PendingRestoreChanges(path string) ([]string, error) {
 //   - A legacy snapshot directory (.eko/snapshots/<id>/) — uses original CopyDir.
 //
 // Both formats extract concurrently using the worker-pool pattern.
-func RestoreSnapshot(path string) error {
+// The optional onProgress callback is invoked after each file is restored.
+func RestoreSnapshot(path string, onProgress func()) error {
 	id := manifest.IDFromPath(path)
 
 	// ── CAS path: manifest exists ─────────────────────────────────────────────
 	if manifest.Exists(ekoDir, id) {
-		return restoreFromManifest(id)
+		return restoreFromManifest(id, onProgress)
 	}
 
 	// ── Legacy path: full directory copy ─────────────────────────────────────
 	// The provided path IS the snapshot directory.
-	return restoreLegacy(path)
+	return restoreLegacy(path, onProgress)
 }
 
 // ─── CAS restore ─────────────────────────────────────────────────────────────
@@ -201,7 +229,7 @@ func RestoreSnapshot(path string) error {
 //  3. Decompresses and extracts ONLY missing or modified files.
 //
 // This reduces disk I/O by 90%+ and beats Git restore speed.
-func restoreFromManifest(id string) error {
+func restoreFromManifest(id string, onProgress func()) error {
 	m, err := manifest.Read(ekoDir, id)
 	if err != nil {
 		return fmt.Errorf("snapshot: read manifest %s: %w", id, err)
@@ -237,7 +265,7 @@ func restoreFromManifest(id string) error {
 
 	// Step 4: Extract ONLY missing or modified files in parallel.
 	if len(filesToExtract) > 0 {
-		if err := store.RestoreTree(filesToExtract, "."); err != nil {
+		if err := store.RestoreTree(filesToExtract, ".", onProgress); err != nil {
 			return fmt.Errorf("snapshot: restore tree: %w", err)
 		}
 	}
@@ -286,11 +314,11 @@ func fileNeedsRestore(rel string, info os.FileInfo, entry objects.FileEntry) boo
 
 // ─── Legacy restore ───────────────────────────────────────────────────────────
 
-func restoreLegacy(path string) error {
+func restoreLegacy(path string, onProgress func()) error {
 	if err := parallelDelete("."); err != nil {
 		return err
 	}
-	if err := util.CopyDir(path, "."); err != nil {
+	if err := util.CopyDir(path, ".", onProgress); err != nil {
 		return err
 	}
 	return restoreEnvVars(path)
@@ -338,8 +366,8 @@ func parallelDelete(dir string) error {
 
 // buildTree walks the working directory, stores each file blob in the object
 // store (using the hash cache to skip unchanged files), and returns the manifest
-// tree map.
-func buildTree(store *objects.Store, hc *cache.HashCache) (map[string]objects.FileEntry, error) {
+// tree map. The optional onProgress callback is invoked after each file is processed.
+func buildTree(store *objects.Store, hc *cache.HashCache, onProgress func()) (map[string]objects.FileEntry, error) {
 	type storeResult struct {
 		rel   string
 		entry objects.FileEntry
@@ -410,6 +438,9 @@ func buildTree(store *objects.Store, hc *cache.HashCache) (map[string]objects.Fi
 						Size: j.info.Size(),
 					},
 				}
+				if onProgress != nil {
+					onProgress()
+				}
 			}
 		}()
 	}
@@ -478,7 +509,7 @@ func restoreEnvVars(snapDir string) error {
 }
 
 func writeEnvScript(envMap map[string]string) error {
-	f, err := os.OpenFile(".eko_env_restore.sh", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	f, err := os.OpenFile(".eko_env_restore.sh", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}
