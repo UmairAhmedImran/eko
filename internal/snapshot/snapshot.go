@@ -21,6 +21,7 @@
 package snapshot
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -38,6 +39,7 @@ import (
 	"eko/internal/cache"
 	"eko/internal/manifest"
 	"eko/internal/objects"
+	"eko/internal/telemetry"
 	"eko/internal/util"
 )
 
@@ -69,41 +71,67 @@ func CountFiles() (int, error) {
 // writes a manifest. It accepts the open database so it can use the hash cache.
 //
 // Returns the snapshot ID and the manifest path (stored in db.snapshots.path).
-// The optional onProgress callback is invoked after each file is processed.
 func CreateSnapshot(db *sql.DB, withEnv bool, onProgress func()) (id, path string, err error) {
+	ctx := context.Background()
+
+	operation := telemetry.StartOperation(
+		ctx,
+		"eko.snapshot.create",
+		telemetry.OperationAttribute("snapshot.create"),
+	)
+	defer func() {
+		telemetry.EndOperation(operation.Span, err)
+	}()
+
+	start := time.Now()
+	success := false
+
+	defer func() {
+		telemetry.RecordCAS(
+			operation.Context,
+			"snapshot.create",
+			start,
+			success,
+		)
+	}()
+
+	// Generate a unique snapshot ID.
 	id, err = generateID()
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("snapshot: generate ID: %w", err)
 	}
 
+	// Open the CAS object store.
 	store, err := objects.New(ekoDir)
 	if err != nil {
 		return "", "", fmt.Errorf("snapshot: open object store: %w", err)
 	}
 
+	// Open the hash cache. Cache failure is non-fatal; we can still
+	// create the snapshot by hashing files normally.
 	hc, err := cache.New(db)
 	if err != nil {
-		// Hash cache failure is non-fatal: fall back to always hashing.
 		hc = nil
 	} else {
 		defer hc.Close()
 	}
 
+	// Walk the workspace and store files in the CAS.
 	tree, err := buildTree(store, hc, onProgress)
 	if err != nil {
 		return "", "", fmt.Errorf("snapshot: build tree: %w", err)
 	}
 
-	// Capture and store environment variables as a blob if requested.
+	// Optionally capture the current environment variables as a CAS blob.
 	var envHash string
 	if withEnv {
-		var err error
 		envHash, err = captureEnvVars(store)
 		if err != nil {
 			return "", "", fmt.Errorf("snapshot: capture env: %w", err)
 		}
 	}
 
+	// Build the snapshot manifest.
 	m := &manifest.Manifest{
 		ID:        id,
 		CreatedAt: time.Now(),
@@ -111,11 +139,15 @@ func CreateSnapshot(db *sql.DB, withEnv bool, onProgress func()) (id, path strin
 		EnvHash:   envHash,
 	}
 
+	// Persist the manifest.
 	if err := manifest.Write(ekoDir, m); err != nil {
 		return "", "", fmt.Errorf("snapshot: write manifest: %w", err)
 	}
 
 	manifestPath := filepath.Join(ekoDir, "manifests", id+".json")
+
+	success = true
+
 	return id, manifestPath, nil
 }
 
