@@ -1919,3 +1919,86 @@ func TestCompletionCmd_TooManyArgs(t *testing.T) {
 		t.Error("expected error when more than one shell argument is given, got nil")
 	}
 }
+
+func TestFormatVersion(t *testing.T) {
+	got := formatVersion("1.1.0", "8c9d1a2f", "2026-08-26T08:00:00Z")
+	want := "eko version 1.1.0 (" + runtime.GOOS + "/" + runtime.GOARCH + ")\n" +
+		"Go version: " + runtime.Version() + "\n" +
+		"Git commit: 8c9d1a2f\n" +
+		"Build date: 2026-08-26T08:00:00Z\n"
+
+	if got != want {
+		t.Fatalf("unexpected version banner:\nwant:\n%s\ngot:\n%s", want, got)
+	}
+}
+
+func TestFormatVersion_blankBuildMetadataFallsBackToPlaceholders(t *testing.T) {
+	// A build without -ldflags (or with empty values injected) must never print
+	// blank fields.
+	got := formatVersion("", "", "   ")
+	want := "eko version dev (" + runtime.GOOS + "/" + runtime.GOARCH + ")\n" +
+		"Go version: " + runtime.Version() + "\n" +
+		"Git commit: unknown\n" +
+		"Build date: unknown\n"
+
+	if got != want {
+		t.Fatalf("unexpected fallback version banner:\nwant:\n%s\ngot:\n%s", want, got)
+	}
+}
+
+func TestVersionCommand_defaultBuildMetadata(t *testing.T) {
+	// The package defaults are what an un-stamped `go build` produces.
+	if Version != "dev" || Commit != "unknown" || BuildDate != "unknown" {
+		t.Fatalf("unexpected default build metadata: version=%q commit=%q buildDate=%q", Version, Commit, BuildDate)
+	}
+}
+
+func TestVersionCommand(t *testing.T) {
+	got, err := executeCommand(rootCmd, "version")
+	if err != nil {
+		t.Fatalf("eko version returned an error: %v", err)
+	}
+
+	want := formatVersion(Version, Commit, BuildDate)
+	if got != want {
+		t.Fatalf("unexpected eko version output:\nwant:\n%s\ngot:\n%s", want, got)
+	}
+
+	for _, fragment := range []string{
+		runtime.Version(),
+		runtime.GOOS + "/" + runtime.GOARCH,
+		"Git commit:",
+	} {
+		if !strings.Contains(got, fragment) {
+			t.Errorf("expected version output to contain %q, got:\n%s", fragment, got)
+		}
+	}
+}
+
+func TestVersionCommand_rejectsArguments(t *testing.T) {
+	if _, err := executeCommand(rootCmd, "version", "extra"); err == nil {
+		t.Error("expected an error when eko version is given a positional argument, got nil")
+	}
+}
+
+func TestVersionFlags_matchVersionSubcommand(t *testing.T) {
+	want := formatVersion(Version, Commit, BuildDate)
+
+	for _, flag := range []string{"--version", "-v"} {
+		t.Run(flag, func(t *testing.T) {
+			t.Cleanup(func() {
+				if err := rootCmd.Flags().Set("version", "false"); err != nil {
+					t.Errorf("reset version flag: %v", err)
+				}
+			})
+
+			got, err := executeCommand(rootCmd, flag)
+			if err != nil {
+				t.Fatalf("eko %s returned an error: %v", flag, err)
+			}
+			if got != want {
+				t.Fatalf("unexpected eko %s output:\nwant:\n%s\ngot:\n%s", flag, want, got)
+			}
+		})
+	}
+}

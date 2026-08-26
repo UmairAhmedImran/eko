@@ -12,11 +12,18 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "eko",
-	Short: "eko – AI Snapshot Versioning CLI",
+	Use:     "eko",
+	Short:   "eko – AI Snapshot Versioning CLI",
+	Version: Version,
 
 	SilenceUsage:  true,
 	SilenceErrors: true,
+}
+
+func init() {
+	// `eko -v` / `eko --version` print the same banner as `eko version`.
+	rootCmd.SetVersionTemplate(formatVersion(Version, Commit, BuildDate))
+	rootCmd.Flags().BoolP("version", "v", false, "print version, runtime and build information")
 }
 
 func Execute() {
