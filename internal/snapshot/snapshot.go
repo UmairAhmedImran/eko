@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -48,23 +49,8 @@ const ekoDir = ".eko"
 // CountFiles returns the number of files in the current working directory
 // that would be included in a snapshot (excluding ignored files/dirs).
 func CountFiles() (int, error) {
-	var count int
-	err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if util.ShouldIgnore(filepath.Base(path), info.IsDir()) {
-			if info.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
-			count++
-		}
-		return nil
-	})
-	return count, err
+	files, err := util.WalkFiles(".", util.ShouldIgnore)
+	return len(files), err
 }
 
 // CreateSnapshot captures the current workspace into the CAS object store and
@@ -281,25 +267,13 @@ func restoreFromManifest(id string, onProgress func()) error {
 }
 
 func currentRestoreFiles() (map[string]os.FileInfo, error) {
-	existingFiles := make(map[string]os.FileInfo)
-	err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if util.ShouldIgnore(filepath.Base(path), info.IsDir()) {
-			if info.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
-			rel := filepath.ToSlash(path)
-			existingFiles[rel] = info
-		}
-		return nil
-	})
+	discovered, err := util.WalkFiles(".", util.ShouldIgnore)
 	if err != nil {
 		return nil, err
+	}
+	existingFiles := make(map[string]os.FileInfo, len(discovered))
+	for _, f := range discovered {
+		existingFiles[f.Path] = f.Info
 	}
 	return existingFiles, nil
 }
@@ -364,9 +338,15 @@ func parallelDelete(dir string) error {
 
 // ─── Tree builder ────────────────────────────────────────────────────────────
 
-// buildTree walks the working directory, stores each file blob in the object
-// store (using the hash cache to skip unchanged files), and returns the manifest
-// tree map. The optional onProgress callback is invoked after each file is processed.
+// buildTree walks the working directory in parallel, stores each file blob in
+// the object store (using the hash cache to skip unchanged files), and returns
+// the manifest tree map. The optional onProgress callback is invoked after each
+// file is processed.
+//
+// Directory scanning uses util.Walk so multiple goroutines fan out across
+// subdirectory levels concurrently, saturating NVMe/SSD IOPS. File blobs are
+// then processed by a second worker pool that overlaps I/O reads with SHA-256
+// hashing (double-buffered async pipeline).
 func buildTree(store *objects.Store, hc *cache.HashCache, onProgress func()) (map[string]objects.FileEntry, error) {
 	type storeResult struct {
 		rel   string
@@ -374,68 +354,51 @@ func buildTree(store *objects.Store, hc *cache.HashCache, onProgress func()) (ma
 		err   error
 	}
 
-	// Collect all files first (serial walk for correctness).
-	type fileJob struct {
-		abs  string
-		rel  string
-		info os.FileInfo
-	}
-	var jobs []fileJob
-
-	err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if util.ShouldIgnore(filepath.Base(path), info.IsDir()) {
-			if info.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return nil
-		}
-		abs, _ := filepath.Abs(path)
-		rel := filepath.ToSlash(path)
-		jobs = append(jobs, fileJob{abs: abs, rel: rel, info: info})
-		return nil
-	})
+	// Phase 1: parallel directory scan — collect all file entries.
+	// util.Walk fans out NumCPU scanner goroutines across subdirectories.
+	discovered, err := util.WalkFiles(".", util.ShouldIgnore)
 	if err != nil {
 		return nil, err
 	}
 
-	// Process files in parallel using a worker pool.
-	numWorkers := 8
-	jobCh := make(chan fileJob, numWorkers*2)
-	resCh := make(chan storeResult, len(jobs))
+	// Phase 2: process files with a worker pool.
+	// Workers overlap file I/O (PutFile) with SHA-256 hashing inside the
+	// object store, forming a double-buffered async pipeline.
+	numWorkers := runtime.NumCPU()
+	jobCh := make(chan util.FileEntry, numWorkers*4)
+	resCh := make(chan storeResult, len(discovered))
 
 	var wg sync.WaitGroup
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for j := range jobCh {
+			for f := range jobCh {
+				abs := filepath.Join(".", filepath.FromSlash(f.Path))
+
 				var cachedHash string
 				if hc != nil {
-					if h, ok := hc.Lookup(j.rel, j.info); ok {
+					if h, ok := hc.Lookup(f.Path, f.Info); ok {
 						cachedHash = h
 					}
 				}
-				hash, err := store.PutFile(j.abs, cachedHash)
-				if err != nil {
-					resCh <- storeResult{err: err}
+
+				hash, storeErr := store.PutFile(abs, cachedHash)
+				if storeErr != nil {
+					resCh <- storeResult{err: storeErr}
 					return
 				}
-				// Update cache with newly computed hash.
+
 				if hc != nil && cachedHash == "" {
-					_ = hc.Store(j.rel, j.info, hash)
+					_ = hc.Store(f.Path, f.Info, hash)
 				}
+
 				resCh <- storeResult{
-					rel: j.rel,
+					rel: f.Path,
 					entry: objects.FileEntry{
 						Hash: hash,
-						Mode: j.info.Mode(),
-						Size: j.info.Size(),
+						Mode: f.Info.Mode(),
+						Size: f.Info.Size(),
 					},
 				}
 				if onProgress != nil {
@@ -445,14 +408,14 @@ func buildTree(store *objects.Store, hc *cache.HashCache, onProgress func()) (ma
 		}()
 	}
 
-	for _, j := range jobs {
-		jobCh <- j
+	for _, f := range discovered {
+		jobCh <- f
 	}
 	close(jobCh)
 	wg.Wait()
 	close(resCh)
 
-	tree := make(map[string]objects.FileEntry, len(jobs))
+	tree := make(map[string]objects.FileEntry, len(discovered))
 	for res := range resCh {
 		if res.err != nil {
 			return nil, res.err
