@@ -32,6 +32,7 @@ Exhaustive reference guide for all commands, flags, options, and aliases in the 
 | [`eko ai next`](#10-eko-ai-next) | None | AI task & issue recommendation engine | None |
 | [`eko ai security`](#10-eko-ai-security) | None | AI hardcoded secret & vulnerability scanner | None |
 | [`eko ai gate`](#10-eko-ai-gate) | None | AI pre-commit quality gate evaluation | None |
+| [`eko version`](#11-eko-version) | None | Print CLI version, Go runtime, OS/arch, git commit | `-v`/`--version` on the root command |
 
 ---
 
@@ -310,6 +311,42 @@ eko ai security
 
 # AI pre-commit quality gate evaluation
 eko ai gate
+```
+
+---
+
+## 11. `eko version`
+
+Prints the Eko release version, target operating system and architecture, Go runtime version, Git commit, and build date. The root-level `-v` and `--version` flags produce the exact same output.
+
+```bash
+eko version
+eko --version
+eko -v
+```
+
+```text
+eko version 1.1.0 (darwin/arm64)
+Go version: go1.26.7
+Git commit: 8c9d1a2f
+Build date: 2026-08-26T08:22:00Z
+```
+
+### Build Metadata
+
+Release archives are built by GoReleaser, which stamps the values through the Go linker:
+
+```bash
+go build -ldflags "-X eko/cmd.Version=1.1.0 -X eko/cmd.Commit=8c9d1a2f -X eko/cmd.BuildDate=2026-08-26T08:22:00Z" -o eko .
+```
+
+A plain `go build` leaves those variables at their defaults, so locally built binaries report `dev` and `unknown` instead of blank fields:
+
+```text
+eko version dev (darwin/arm64)
+Go version: go1.26.7
+Git commit: unknown
+Build date: unknown
 ```
 
 ---

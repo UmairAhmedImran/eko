@@ -89,6 +89,9 @@ go build -o eko main.go
 # Initialize Eko in any directory
 eko init
 
+# Inspect the installed version and build metadata
+eko version
+
 # Save an instant local snapshot (with optional AI summary)
 eko save -m "Refactored payment gateway handler" --ai
 
